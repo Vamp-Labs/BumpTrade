@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "typeRoots": [
+      "../node_modules/.pnpm/@types+node@26.6.4/node_modules/@types"
+    ]
+  },
+  "include": ["src", "test"]
+}
