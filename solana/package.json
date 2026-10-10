@@ -1,0 +1,22 @@
+{
+  "name": "@bump/solana",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "flock /tmp/bump-build.lock env PATH=$HOME/.cargo/bin:$PATH anchor build",
+    "test:program": "flock /tmp/bump-build.lock env PATH=$HOME/.cargo/bin:$PATH cargo test -p bump_arena",
+    "deploy:devnet": "tsx scripts/deploy-devnet.ts",
+    "deploy:local": "tsx scripts/deploy-devnet.ts --cluster local",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@bump/sol-client": "workspace:*",
+    "@solana/kit": "8.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

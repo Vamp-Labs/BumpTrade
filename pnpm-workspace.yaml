@@ -3,6 +3,7 @@ packages:
   - "server"
   - "indexer"
   - "contracts"
+  - "solana"
 allowBuilds:
   esbuild: true
   msgpackr-extract: false

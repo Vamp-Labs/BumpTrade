@@ -1,0 +1,10 @@
+{
+  "cluster": "devnet",
+  "programId": "3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz",
+  "mint": null,
+  "treasury": null,
+  "configPda": "A9cNaMdxaNm82UwqDxAwSwCs7wCUv7AiohnZFnpTeMNv",
+  "slot": null,
+  "txSig": null,
+  "pending": true
+}
