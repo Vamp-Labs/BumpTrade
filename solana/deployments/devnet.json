@@ -1,10 +1,10 @@
 {
   "cluster": "devnet",
   "programId": "3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz",
-  "mint": null,
-  "treasury": null,
+  "mint": "J1t1uz6csJ7V5wMsjtbv8y4KJLs27r63KYDxiBQBADBG",
+  "treasury": "knS3QhH1v8LRrCru2SpMQbtwbbDtFwQjYRYPYeBtsfS",
   "configPda": "A9cNaMdxaNm82UwqDxAwSwCs7wCUv7AiohnZFnpTeMNv",
-  "slot": null,
-  "txSig": null,
-  "pending": true
+  "slot": 509483032,
+  "txSig": "5Qs9gZgnpQHjUuCcJj45j9am1yVkCyyRBHyLPh8tbZKRu3qoG4r8oFZxx6uwNjASZBKL8ZJqJaFrsTMMQj5cKhuZ",
+  "pending": false
 }
