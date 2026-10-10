@@ -26,6 +26,8 @@ import {
   type SimEvent,
   SPAWN_SLOTS,
   seatMessage,
+  SOL_JOIN_PREPARE_MESSAGE,
+  SOL_JOIN_SUBMIT_MESSAGE,
   secondsToTicks,
   TICK_HZ,
   type Hex32,
@@ -36,6 +38,7 @@ import { type Client, Room } from "colyseus";
 import { type Hex, keccak256, toBytes } from "viem";
 import { type ChainResult, MatchStatus } from "../chain/ArenaChain";
 import { sameSessionKey, verifySeatProof } from "../chain/seatProof";
+import type { JoinOutcome } from "../relay/JoinRelay";
 import { InputLog, type SeatInput } from "../log/InputLog";
 import { RoomMetrics } from "../metrics";
 import { getRoomContext, type RoomContext } from "./context";
@@ -185,9 +188,19 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       roomId: this.roomId,
     });
 
-    this.onMessage(JOIN_INTENT_MESSAGE, (client, message) => {
-      void this.handleJoin(client, message);
-    });
+    if (this.ctx.joinRelay) {
+      this.onMessage(JOIN_INTENT_MESSAGE, (client, message) => {
+        void this.handleJoin(client, message);
+      });
+    }
+    if (this.ctx.solJoin) {
+      this.onMessage(SOL_JOIN_PREPARE_MESSAGE, (client, message) => {
+        void this.handleSolPrepare(client, message);
+      });
+      this.onMessage(SOL_JOIN_SUBMIT_MESSAGE, (client, message) => {
+        void this.handleSolSubmit(client, message);
+      });
+    }
     this.onMessage(CLAIM_SEAT_MESSAGE, (client, message) => {
       void this.handleClaim(client, message);
     });
@@ -274,35 +287,78 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     if (seat !== undefined) this.sim?.setConnected(seat, connected);
   }
 
-  private async handleJoin(client: Client, raw: unknown): Promise<void> {
+  private joinsOpen(client: Client): boolean {
     if (this.state.phase !== Phase.LOBBY || this.cancelled || this.busy) {
       this.sendError(client, "MATCH_CLOSED", "match is not accepting joins");
-      return;
+      return false;
     }
+    return true;
+  }
+
+  private sendJoinOutcome(client: Client, outcome: JoinOutcome): void {
+    if (outcome.ok) {
+      this.sendEvent(client, {
+        t: "joinResult",
+        matchId: this.matchId,
+        wallet: outcome.wallet,
+        seat: outcome.seat,
+        txHash: outcome.txHash,
+      });
+    } else {
+      this.sendEvent(client, {
+        t: "error",
+        code: outcome.code,
+        message: outcome.message,
+        retryAfterS: outcome.retryAfterS,
+      });
+    }
+  }
+
+  private async handleJoin(client: Client, raw: unknown): Promise<void> {
+    const relay = this.ctx.joinRelay;
+    if (!relay || !this.joinsOpen(client)) return;
     const auth = client.auth as { ip?: string } | undefined;
     this.joinsInFlight += 1;
     try {
-      const outcome = await this.ctx.joinRelay.submit(
+      this.sendJoinOutcome(
+        client,
+        await relay.submit(raw, this.matchId, auth?.ip ?? "unknown"),
+      );
+    } catch (error) {
+      this.ctx.log({ evt: "join_error", error: String(error) });
+      this.sendError(client, "JOIN_FAILED", "join failed");
+    } finally {
+      this.joinsInFlight -= 1;
+    }
+  }
+
+  private async handleSolPrepare(client: Client, raw: unknown): Promise<void> {
+    const relay = this.ctx.solJoin;
+    if (!relay || !this.joinsOpen(client)) return;
+    const auth = client.auth as { ip?: string } | undefined;
+    this.joinsInFlight += 1;
+    try {
+      const outcome = await relay.prepare(
         raw,
         this.matchId,
         auth?.ip ?? "unknown",
       );
-      if (outcome.ok) {
-        this.sendEvent(client, {
-          t: "joinResult",
-          matchId: this.matchId,
-          wallet: outcome.wallet,
-          seat: outcome.seat,
-          txHash: outcome.txHash,
-        });
-      } else {
-        this.sendEvent(client, {
-          t: "error",
-          code: outcome.code,
-          message: outcome.message,
-          retryAfterS: outcome.retryAfterS,
-        });
-      }
+      if (outcome.ok) this.sendEvent(client, outcome.event);
+      else this.sendJoinOutcome(client, outcome);
+    } catch (error) {
+      this.ctx.log({ evt: "join_error", error: String(error) });
+      this.sendError(client, "JOIN_FAILED", "join failed");
+    } finally {
+      this.joinsInFlight -= 1;
+    }
+  }
+
+  private async handleSolSubmit(client: Client, raw: unknown): Promise<void> {
+    const relay = this.ctx.solJoin;
+    if (!relay || !this.joinsOpen(client)) return;
+    this.joinsInFlight += 1;
+    try {
+      this.sendJoinOutcome(client, await relay.submit(raw, this.matchId));
     } catch (error) {
       this.ctx.log({ evt: "join_error", error: String(error) });
       this.sendError(client, "JOIN_FAILED", "join failed");
@@ -552,6 +608,9 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     await this.ctx.chain.cancel(this.matchId);
     this.cancelled = true;
     void this.ctx.keeper.forget(this.matchId);
+    void this.ctx.leaderboard?.recordCancelled(this.matchId).catch((error) => {
+      this.ctx.log({ evt: "leaderboard_failed", error: String(error) });
+    });
     this.setPhase(Phase.CANCELLED);
     this.announceSettlement("cancelled");
     this.clock.setTimeout(() => void this.disconnect(), LOBBY_LINGER_MS);
@@ -830,6 +889,35 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     }
   }
 
+  private recordSettled(
+    result: ChainResult,
+    payouts: bigint[],
+    settleTx: string,
+  ): void {
+    const board = this.ctx.leaderboard;
+    if (!board) return;
+    const { config } = this.ctx;
+    void board
+      .recordSettled({
+        matchId: this.matchId,
+        chain: this.ctx.chain.id,
+        stake: config.stakeAmount,
+        startBalance: config.startBalance,
+        potAmount: config.stakeAmount * BigInt(result.players.length),
+        settleTx,
+        settledAt: Math.floor(this.ctx.now() / 1000),
+        players: result.players.map((wallet, seat) => ({
+          wallet,
+          finalBalance: result.finalBalances[seat] ?? 0,
+          rank: result.ranks[seat] ?? 0,
+          payout: payouts[seat] ?? 0n,
+        })),
+      })
+      .catch((error: unknown) => {
+        this.ctx.log({ evt: "leaderboard_failed", error: String(error) });
+      });
+  }
+
   private async finishMatch(sim: MatchSim, log: InputLog): Promise<void> {
     this.setPhase(Phase.ENDED);
     const outcome = sim.outcome();
@@ -880,6 +968,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       this.announceSettlement(update.status, update.txHash, update.error);
       if (update.status === "confirmed") {
         void this.ctx.keeper.forget(this.matchId);
+        this.recordSettled(result, payouts.payouts, update.txHash ?? "");
         this.ctx.metrics.recordSettlementLag(this.ctx.now() - this.endedAtMs);
       }
     });

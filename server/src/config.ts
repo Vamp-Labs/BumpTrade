@@ -1,4 +1,6 @@
 import type { ChainId } from "@bump/shared";
+import { deployments } from "@bump/sol-client";
+import { getBase58Encoder, isAddress as isSolAddress } from "@solana/kit";
 import type { Address } from "viem";
 import { isAddress } from "viem";
 
@@ -13,10 +15,25 @@ export interface EvmChainConfig {
   tokenAddress: Address | null;
 }
 
+export interface SolanaChainConfig {
+  cluster: string;
+  rpcUrl: string;
+  wsUrl: string | null;
+  programId: string;
+  mint: string;
+  treasury: string;
+  relayerSecret: Uint8Array;
+  resultSignerSecret: Uint8Array;
+  mintAuthoritySecret: Uint8Array;
+}
+
 export interface ServerConfig {
   chain: ChainId;
   port: number;
   evm: EvmChainConfig | null;
+  solana: SolanaChainConfig | null;
+  databaseUrl: string | null;
+  databaseSchema: string;
   stakeAmount: bigint;
   relayerMinBalance: bigint;
   corsOrigins: string[];
@@ -38,6 +55,13 @@ export interface LimitConfig {
 }
 
 export type Env = Record<string, string | undefined>;
+
+const DEFAULT_SOL_RPC_URL = "https://api.devnet.solana.com";
+const SOLANA_VARIABLES = [
+  "SOL_RELAYER_SECRET",
+  "SOL_RESULT_SIGNER_SECRET",
+  "SOL_MINT_AUTHORITY_SECRET",
+] as const;
 
 const CHAIN_VARIABLES = [
   "ARENA_ADDRESS",
@@ -87,6 +111,31 @@ const readKey = (env: Env, name: string): `0x${string}` => {
   return prefixed as `0x${string}`;
 };
 
+const readSecret = (env: Env, name: string): Uint8Array => {
+  const raw = (env[name] ?? "").trim();
+  let bytes: Uint8Array | null = null;
+  try {
+    bytes = getBase58Encoder().encode(raw) as Uint8Array;
+  } catch {
+    bytes = null;
+  }
+  if (bytes === null || bytes.length !== 64) {
+    throw new Error(`${name} must be a base58 64-byte secret key`);
+  }
+  return bytes;
+};
+
+const readSolAddress = (
+  env: Env,
+  name: string,
+  fallback: string | null,
+): string => {
+  const raw = env[name] && env[name] !== "" ? env[name] : fallback;
+  if (!raw) throw new Error(`${name} is required`);
+  if (!isSolAddress(raw)) throw new Error(`${name} must be a Solana address`);
+  return raw;
+};
+
 const readChain = (env: Env): ChainId => {
   const raw = env.CHAIN === undefined || env.CHAIN === "" ? "solana" : env.CHAIN;
   if (raw !== "evm" && raw !== "solana") {
@@ -95,57 +144,14 @@ const readChain = (env: Env): ChainId => {
   return raw;
 };
 
-export const loadConfig = (env: Env): ServerConfig => {
-  const chain = readChain(env);
-  if (chain === "solana") {
-    throw new Error(
-      "CHAIN=solana is not available yet: the Solana adapter lands in phase B. Set CHAIN=evm to run the Robinhood Chain server.",
-    );
-  }
-  const missing = CHAIN_VARIABLES.filter((name) => !env[name]);
-  if (missing.length > 0) {
-    throw new Error(
-      `missing required environment variables: ${missing.join(", ")}`,
-    );
-  }
-
-  const arena = env.ARENA_ADDRESS ?? "";
-  if (!isAddress(arena)) {
-    throw new Error("ARENA_ADDRESS must be an address");
-  }
-
+const loadCommon = (env: Env, defaultStake: string) => {
   const minPlayers = readInt(env, "MIN_PLAYERS", 2, 2, 8);
   const maxPlayers = readInt(env, "MAX_PLAYERS", 8, minPlayers, 8);
-
-  const stakeAmount = readBigInt(env, "STAKE_AMOUNT", "100000000000000000000");
+  const stakeAmount = readBigInt(env, "STAKE_AMOUNT", defaultStake);
   if (stakeAmount <= 0n) throw new Error("STAKE_AMOUNT must be positive");
-  const relayerMinBalance = readBigInt(
-    env,
-    "RELAYER_MIN_BALANCE_WEI",
-    "2000000000000000",
-  );
-
-  const token = env.TOKEN_ADDRESS ?? "";
-  if (token !== "" && !isAddress(token)) {
-    throw new Error("TOKEN_ADDRESS must be an address");
-  }
-
   return {
-    chain,
     port: readInt(env, "PORT", 2567, 1, 65535),
-    evm: {
-      rpcUrl:
-        env.RH_RPC_URL && env.RH_RPC_URL !== ""
-          ? env.RH_RPC_URL
-          : PUBLIC_RPC_URL,
-      wssUrl: env.RH_WSS_URL && env.RH_WSS_URL !== "" ? env.RH_WSS_URL : null,
-      arenaAddress: arena,
-      signerPrivateKey: readKey(env, "SIGNER_PRIVATE_KEY"),
-      relayerPrivateKey: readKey(env, "RELAYER_PRIVATE_KEY"),
-      tokenAddress: token === "" ? null : (token as Address),
-    },
     stakeAmount,
-    relayerMinBalance,
     corsOrigins: parseOrigins(env.CORS_ORIGINS),
     limits: {
       faucetPerIpPerHour: readInt(env, "FAUCET_PER_IP_PER_HOUR", 5, 1, 100000),
@@ -168,5 +174,88 @@ export const loadConfig = (env: Env): ServerConfig => {
       env.REPLAY_DIR && env.REPLAY_DIR !== "" ? env.REPLAY_DIR : "./replays",
     serverBuild:
       env.SERVER_BUILD && env.SERVER_BUILD !== "" ? env.SERVER_BUILD : "dev",
+    databaseUrl:
+      env.DATABASE_URL && env.DATABASE_URL !== "" ? env.DATABASE_URL : null,
+    databaseSchema:
+      env.DATABASE_SCHEMA && env.DATABASE_SCHEMA !== ""
+        ? env.DATABASE_SCHEMA
+        : "bump_sol",
+  };
+};
+
+const loadSolana = (env: Env): ServerConfig => {
+  const missing = SOLANA_VARIABLES.filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new Error(
+      `missing required environment variables: ${missing.join(", ")}`,
+    );
+  }
+  const relayerMinBalance = readBigInt(env, "RELAYER_MIN_BALANCE", "50000000");
+  const deployed = deployments.pending ? null : deployments;
+  return {
+    ...loadCommon(env, "100000000000"),
+    chain: "solana",
+    evm: null,
+    solana: {
+      cluster:
+        env.SOL_CLUSTER && env.SOL_CLUSTER !== "" ? env.SOL_CLUSTER : "devnet",
+      rpcUrl:
+        env.SOL_RPC_URL && env.SOL_RPC_URL !== ""
+          ? env.SOL_RPC_URL
+          : DEFAULT_SOL_RPC_URL,
+      wsUrl: env.SOL_WS_URL && env.SOL_WS_URL !== "" ? env.SOL_WS_URL : null,
+      programId: readSolAddress(env, "SOL_PROGRAM_ID", deployments.programId),
+      mint: readSolAddress(env, "SOL_MINT", deployed?.mint ?? null),
+      treasury: readSolAddress(env, "SOL_TREASURY", deployed?.treasury ?? null),
+      relayerSecret: readSecret(env, "SOL_RELAYER_SECRET"),
+      resultSignerSecret: readSecret(env, "SOL_RESULT_SIGNER_SECRET"),
+      mintAuthoritySecret: readSecret(env, "SOL_MINT_AUTHORITY_SECRET"),
+    },
+    relayerMinBalance,
+  };
+};
+
+export const loadConfig = (env: Env): ServerConfig => {
+  const chain = readChain(env);
+  if (chain === "solana") return loadSolana(env);
+  const missing = CHAIN_VARIABLES.filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new Error(
+      `missing required environment variables: ${missing.join(", ")}`,
+    );
+  }
+
+  const arena = env.ARENA_ADDRESS ?? "";
+  if (!isAddress(arena)) {
+    throw new Error("ARENA_ADDRESS must be an address");
+  }
+
+  const relayerMinBalance = readBigInt(
+    env,
+    "RELAYER_MIN_BALANCE_WEI",
+    "2000000000000000",
+  );
+
+  const token = env.TOKEN_ADDRESS ?? "";
+  if (token !== "" && !isAddress(token)) {
+    throw new Error("TOKEN_ADDRESS must be an address");
+  }
+
+  return {
+    ...loadCommon(env, "100000000000000000000"),
+    chain,
+    solana: null,
+    evm: {
+      rpcUrl:
+        env.RH_RPC_URL && env.RH_RPC_URL !== ""
+          ? env.RH_RPC_URL
+          : PUBLIC_RPC_URL,
+      wssUrl: env.RH_WSS_URL && env.RH_WSS_URL !== "" ? env.RH_WSS_URL : null,
+      arenaAddress: arena,
+      signerPrivateKey: readKey(env, "SIGNER_PRIVATE_KEY"),
+      relayerPrivateKey: readKey(env, "RELAYER_PRIVATE_KEY"),
+      tokenAddress: token === "" ? null : (token as Address),
+    },
+    relayerMinBalance,
   };
 };

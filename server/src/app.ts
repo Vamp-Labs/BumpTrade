@@ -38,12 +38,30 @@ export const createApp = (context: RoomContext) => {
       status,
       headers: { "content-type": "application/json" },
     });
+  const board = context.leaderboard;
+  const boardRoute = (path: string) =>
+    createEndpoint(path, { method: "GET" }, async (ctx) => {
+      const response = ctx.request
+        ? await board?.handleRequest(ctx.request)
+        : null;
+      return response ?? json(404, { code: "NOT_FOUND" });
+    });
+  const boardRoutes: Record<string, ReturnType<typeof boardRoute>> = board
+    ? {
+        leaderboard: boardRoute("/leaderboard"),
+        player: boardRoute("/players/:wallet"),
+        matches: boardRoute("/matches"),
+        match: boardRoute("/matches/:id"),
+        ready: boardRoute("/ready"),
+      }
+    : {};
   return defineServer({
     transport: new WebSocketTransport(),
     rooms: {
       [ROOM_NAME]: defineRoom(ArenaRoom),
     },
     routes: createRouter({
+      ...boardRoutes,
       metrics: createEndpoint("/metrics.json", { method: "GET" }, async () => {
         let relayerBalanceWei: string | null = null;
         try {

@@ -8,7 +8,8 @@ Values are never committed. Set them in a local env file that is not tracked.
 
 | Name | Required | Default | Meaning |
 |---|---|---|---|
-| `ARENA_ADDRESS` | yes | none | deployed `BumpArena` address |
+| `CHAIN` | no | `solana` | chain adapter, `evm` or `solana`; the Robinhood server must set `CHAIN=evm` |
+| `ARENA_ADDRESS` | yes (evm) | none | deployed `BumpArena` address |
 | `SIGNER_PRIVATE_KEY` | yes | none | key that signs the `Result` (must equal the contract `signer`) |
 | `RELAYER_PRIVATE_KEY` | yes | none | key that sends `openMatch`, `startMatch`, `settle`, `cancel`, `joinWithSig`, `claimRefund` and the faucet `claim` (must equal the contract `operator`, needs testnet ETH; the only account that pays gas) |
 | `RH_RPC_URL` | no | public testnet RPC | keyed RPC preferred; the public RPC is added as a fallback |
@@ -30,6 +31,28 @@ Values are never committed. Set them in a local env file that is not tracked.
 | `SERVER_BUILD` | no | `dev` | build id written to `matchStart` and the replay file |
 
 The server fails fast when `ARENA_ADDRESS`, `SIGNER_PRIVATE_KEY` or `RELAYER_PRIVATE_KEY` is missing or malformed, and never logs key material.
+
+## Solana adapter (`CHAIN=solana`)
+
+Solana devnet is the default chain. The relayer is the fee payer and the match operator, the result signer co-signs `settle`, and the mint authority mints the faucet. Keys are base58 64-byte secret keys read only from the environment. With `CHAIN=evm` none of these names are read.
+
+| Name | Required | Default | Meaning |
+|---|---|---|---|
+| `SOL_CLUSTER` | no | `devnet` | label used for explorer links |
+| `SOL_RPC_URL` | no | `https://api.devnet.solana.com` | JSON-RPC endpoint (reads and sends use `confirmed`) |
+| `SOL_WS_URL` | no | none | accepted but unused, confirmation polls `getSignatureStatuses` |
+| `SOL_PROGRAM_ID` | no | `@bump/sol-client` program id | `bump_arena` program |
+| `SOL_MINT` | yes until `solana/deployments/devnet.json` is deployed | deployment file | BUMP mint (9 decimals) |
+| `SOL_TREASURY` | yes until deployed | deployment file | treasury token account |
+| `SOL_RELAYER_SECRET` | yes | none | fee payer and operator; must equal the config `operator` |
+| `SOL_RESULT_SIGNER_SECRET` | yes | none | co-signs `settle`; must equal the config `result_signer` |
+| `SOL_MINT_AUTHORITY_SECRET` | yes | none | mints the faucet amount |
+| `RELAYER_MIN_BALANCE` | no | 50000000 | lamports; faucet and join are refused (`RELAYER_LOW`) below this relayer balance |
+| `DATABASE_URL` | no | none (in-memory) | Postgres for the leaderboard and the 24 h faucet cooldown |
+| `DATABASE_SCHEMA` | no | `bump_sol` | schema for those tables |
+| `STAKE_AMOUNT` | no | 100000000000 | in base units (9 decimals); checked against the on-chain config at boot (`config mismatch` aborts) |
+
+The rest of the table (`PORT`, `CORS_ORIGINS`, limits, `START_BALANCE`, match timing, `REPLAY_DIR`) is shared. Join on Solana: room message `solJoinPrepare {matchId, player, sessionKey, vehicleId}` returns `{t:'solJoinTx', matchId, tx, expiresAt}` (unsigned base64 wire transaction, `expiresAt` in unix ms, valid 60 s), the wallet signs it, `solJoinSubmit {matchId, signedTx}` makes the server check the message bytes are identical, add the relayer signature and send, then `{t:'joinResult'}` (or `TX_TAMPERED`, `TX_EXPIRED`, `BAD_SIGNATURE` and the usual join error codes). Seat proof is `claimSeat` with `scheme: "ed25519"` and a base58 or base64 detached signature. The leaderboard routes (`/leaderboard`, `/players/:wallet`, `/matches`, `/matches/:id`, `/ready`) are served on the same port.
 
 ## Run
 
