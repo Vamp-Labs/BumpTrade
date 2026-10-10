@@ -153,6 +153,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     this.state.stakeWei = config.stakeAmount.toString();
     this.state.startBalance = config.startBalance;
     this.state.joinDeadline = Number(joinDeadline);
+    this.state.fillEndsAt = 0;
 
     await chain.openMatch({
       matchId: this.matchId,
@@ -509,7 +510,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       });
       if (
         this.claimed.size >= this.ctx.config.minPlayers &&
-        this.state.fillEndsAt === 0
+        !this.state.fillEndsAt
       ) {
         this.state.fillEndsAt =
           Math.floor(this.ctx.now() / 1000) + this.ctx.config.fillTimerS;
