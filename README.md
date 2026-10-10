@@ -1,6 +1,6 @@
 # BUMP.TRADE
 
-Real-time 3D multiplayer bumper-car arena on **Robinhood Chain testnet**. Bump other cars, knock them out of the arena, last car standing wins. Stakes are a free mock token (`BUMP`) and play is gasless: a player only signs a message, the server relayer pays the gas.
+Real-time 3D multiplayer bumper-car arena. **Solana devnet is the default chain**; Robinhood Chain testnet stays supported behind the same chain adapter. Bump other cars, knock them out of the arena, last car standing wins. Stakes are a free mock token (`BUMP`) and play is gasless: a player only signs a message, the server relayer pays the gas.
 
 > Testnet demo. Not affiliated with, endorsed by, or connected with Robinhood Markets, Inc.
 
@@ -8,11 +8,24 @@ Real-time 3D multiplayer bumper-car arena on **Robinhood Chain testnet**. Bump o
 
 - **Client** (`src/`): Vite + three.js + Rapier. Offline mode against AI bots, and an online mode with wallet connect, free `BUMP` faucet and one-signature join.
 - **Game server** (`server/`): Colyseus 0.18 over WebSocket. Runs the authoritative Rapier simulation at 60 Hz, streams 30 Hz snapshots, relays joins (`joinWithSig`) and signs match results (EIP-712).
-- **Contracts** (`contracts/`): Foundry. `BumpArena` escrows `BUMP` stakes, verifies the signed result and pushes payouts; `MockBUMP` is the free ERC20 with a 24 h faucet.
+- **Solana program** (`solana/`): Anchor `bump_arena` (escrow, gasless join, settle, refund) with a Codama client in `packages/sol-client/`.
+- **EVM contracts** (`contracts/`): Foundry. `BumpArena` escrows `BUMP` stakes, verifies the signed result and pushes payouts; `MockBUMP` is the free ERC20 with a 24 h faucet.
 - **Indexer** (`indexer/`): Ponder. Indexes arena events and serves the leaderboard and match history API.
 - **Shared** (`packages/shared/`): protocol schemas, message types and the deterministic game rules used by server and client.
 
-## Deployments (Robinhood Chain testnet, chain id 46630)
+## Deployments
+
+### Solana devnet (default)
+
+| Item | Address |
+|---|---|
+| Program `bump_arena` | `3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz` |
+| BUMP mint (9 decimals) | `J1t1uz6csJ7V5wMsjtbv8y4KJLs27r63KYDxiBQBADBG` |
+| Treasury | `knS3QhH1v8LRrCru2SpMQbtwbbDtFwQjYRYPYeBtsfS` |
+
+Record: `solana/deployments/devnet.json`. Gasless for players: the server relayer pays fees, a player signs one transaction. Leaderboard is written by the server to Postgres. Hosted on Railway (Singapore): client, `server-sol`, Postgres.
+
+### Robinhood Chain testnet (chain id 46630, supported, currently not hosted)
 
 | Contract | Address |
 |---|---|
@@ -29,7 +42,10 @@ public/models/       vehicle GLBs (textures embedded)
 packages/shared/     protocol + shared game rules
 server/              Colyseus game server
 indexer/             Ponder indexer + leaderboard API
-contracts/           Foundry contracts, tests, deploy scripts
+solana/              Anchor program, tests, deploy script
+packages/sol-client/ generated Solana TypeScript client
+contracts/           Foundry (EVM) contracts, tests, deploy scripts
+tools/e2e/           two-browser end-to-end harness with mock Wallet Standard wallets
 docs/                PRDs, design notes, research, role handoffs, screenshots
 tools/asset-pipeline Blender and texture generation scripts used to build the GLBs
 Dockerfile.server    Railway image for the game server
