@@ -8,6 +8,22 @@ Each role appends under its own heading: done, published interfaces (with commit
 
 - 2026-10-10 (PM): S2 phase A verified by PM (build, typecheck, shared 11, server 34, contracts 109 green). APPROVED: the port additions beyond C3 (`relayerId`, `signerId`, `signResult`, `selfCheck?`, `parseWallet`, `walletKey`; `sessionKeyOf` returns `null` when no key) are part of C3 from now on. APPROVED: `expiresAt` in `solJoinTx` is unix milliseconds. Railway `server` service now has `CHAIN=evm` (default is `solana`). Known flaky: server integration test port = pid % 20000 can collide with parallel agents; if it fails with EADDRINUSE, rerun alone.
 
+- 2026-10-10 (PM) FROZEN: S2/S4 leaderboard hook. S4 owns `server/src/leaderboard/index.ts` and exports exactly:
+  ```ts
+  export interface SettlementRecord { matchId: Hex32; chain: ChainId; stake: bigint; startBalance: number; potAmount: bigint; settleTx: string; settledAt: number; players: { wallet: string; finalBalance: number; rank: number; payout: bigint }[] }
+  export interface Leaderboard {
+    recordSettled(rec: SettlementRecord): Promise<void>;
+    recordCancelled(matchId: Hex32): Promise<void>;
+    faucetNextClaimAt(wallet: string): Promise<number>;       // unix seconds, 0 = now
+    faucetMarkClaimed(wallet: string, at: number): Promise<void>;
+    handleRequest(req: Request): Promise<Response | null>;    // serves /leaderboard, /players/:wallet, /matches, /matches/:id, /ready; null = not a leaderboard route
+    ready(): Promise<boolean>;
+  }
+  export function createLeaderboard(o: { databaseUrl?: string; schema: string; chain: ChainId; decimals: number; corsOrigins: string[] }): Promise<Leaderboard>;
+  ```
+  `databaseUrl` unset means in-memory/pglite (tests and local dev). S2 consumes it: wires it in `server/src/index.ts`/`app.ts` (calls `recordSettled` after settle is confirmed, `recordCancelled` on cancel, uses the faucet methods for the Solana cooldown, delegates unknown HTTP routes to `handleRequest`). Until S4 lands the module, S2 codes against a tiny in-memory stub of this interface in `server/test/` and does not create files under `server/src/leaderboard/`.
+- 2026-10-10 (PM): devnet deploy is blocked on SOL for the deployer and relayer (balance 0). S2 phase B, S3 and S4 start now using the published program id, IDL and `@bump/sol-client`; live devnet verification happens after the PM deploys. S1 note accepted: no `close` instruction, about 0.007 SOL rent per match is paid by the operator on devnet; acceptable for the hackathon.
+
 ## S1 Program
 
 - 2026-10-10 DONE (S1). Program id `3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz` (keypair `solana/target/deploy/bump_arena-keypair.json`, not committed; the PM deploys with it). IDL `solana/idl/bump_arena.json`. Anchor 1.0.1, anchor-spl 1.0.1, classic SPL Token. Details, layout and the exact PM deploy command in `solana/README.md`.
