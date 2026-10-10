@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_ARENA_ADDRESS?: string;
   readonly VITE_TOKEN_ADDRESS?: string;
   readonly VITE_EXPLORER_URL?: string;
+  readonly VITE_ENABLE_EVM?: string;
   readonly VITE_CHAIN_DEFAULT?: string;
   readonly VITE_SOL_CLUSTER?: string;
   readonly VITE_SOL_RPC_URL?: string;

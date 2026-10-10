@@ -42,7 +42,8 @@ const solGameServerUrl = readString(meta.VITE_SOL_GAME_SERVER_URL, 'ws://localho
 const solCluster = readString(meta.VITE_SOL_CLUSTER, solDeployments.cluster || 'devnet');
 
 export const env = {
-  chainDefault: meta.VITE_CHAIN_DEFAULT?.trim() === 'evm' ? ('evm' as const) : ('solana' as const),
+  enableEvm: meta.VITE_ENABLE_EVM?.trim() === 'true',
+  chainDefault: meta.VITE_CHAIN_DEFAULT?.trim() === 'evm' && meta.VITE_ENABLE_EVM?.trim() === 'true' ? ('evm' as const) : ('solana' as const),
   chainId: readChainId(meta.VITE_CHAIN_ID),
   rpcUrl: readString(meta.VITE_RPC_URL, 'https://rpc.testnet.chain.robinhood.com'),
   publicRpcUrl: 'https://rpc.testnet.chain.robinhood.com',

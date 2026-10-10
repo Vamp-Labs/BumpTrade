@@ -102,7 +102,7 @@ const CHAIN_KEY = 'bump.chain';
 function readStored(): ChainId {
   try {
     const stored = localStorage.getItem(CHAIN_KEY);
-    if (stored === 'solana' || stored === 'evm') return stored;
+    if (stored === 'solana' || (stored === 'evm' && env.enableEvm)) return stored;
   } catch {
     return env.chainDefault;
   }

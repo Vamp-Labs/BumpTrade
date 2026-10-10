@@ -2,6 +2,7 @@ import { CHAIN_IDS, CHAIN_META, getActiveChain, type ChainId } from '../../chain
 import { h } from './dom';
 
 export function renderChainSelector(parent: HTMLElement, onSelect: (id: ChainId) => void): void {
+  if (CHAIN_IDS.length < 2) return;
   const active = getActiveChain().id;
   const bar = h('div', 'on-segs on-chains');
   for (const id of CHAIN_IDS) {

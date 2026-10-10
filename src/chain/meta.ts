@@ -46,4 +46,4 @@ export const CHAIN_META: Record<ChainId, ChainMeta> = {
   },
 };
 
-export const CHAIN_IDS: readonly ChainId[] = ['solana', 'evm'];
+export const CHAIN_IDS: readonly ChainId[] = env.enableEvm ? ['solana', 'evm'] : ['solana'];

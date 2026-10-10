@@ -143,7 +143,7 @@ export class OnlineLeaderboard {
       });
       chains.appendChild(seg);
     }
-    wrap.appendChild(chains);
+    if (CHAIN_IDS.length > 1) wrap.appendChild(chains);
     const bar = h('div', 'on-segs');
     const items: Array<[LeaderboardWindow, string]> = [
       ['all', 'ALL TIME'],
