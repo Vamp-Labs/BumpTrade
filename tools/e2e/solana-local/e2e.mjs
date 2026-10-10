@@ -140,18 +140,23 @@ async function main() {
   globalThis.__pages = { A, B };
   await Promise.all([openWalletPanel(A), openWalletPanel(B)]);
   let t = await panel(A);
-  check("a.default-chain-solana", /Solana Devnet/.test(t) && (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)) === "Solana Devnet", (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)));
-  await shot(A, "wallet-panel-solana");
-  await A.clickText("Robinhood Chain", ".on-chains button");
-  await sleep(700);
-  t = await panel(A);
-  const evmActive = await A.eval(`document.querySelector('.on-chains .active')?.textContent`);
-  const lsChain = await A.eval(`localStorage.getItem('bump.chain')`);
-  check("a.evm-switch", /Robinhood/.test(evmActive) && lsChain === "evm", `active=${evmActive} bump.chain=${lsChain} text=${t.slice(0, 160).replace(/\n/g, " | ")}`);
-  await shot(A, "chain-evm");
-  await A.clickText("Solana Devnet", ".on-chains button");
-  await sleep(700);
-  check("a.switch-back-solana", (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)) === "Solana Devnet" && (await A.eval(`localStorage.getItem('bump.chain')`)) === "solana");
+  const hasPills = (await A.eval(`document.querySelectorAll('.on-chains button').length`)) > 1;
+  if (hasPills) {
+    check("a.default-chain-solana", /Solana Devnet/.test(t) && (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)) === "Solana Devnet", (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)));
+    await shot(A, "wallet-panel-solana");
+    await A.clickText("Robinhood Chain", ".on-chains button");
+    await sleep(700);
+    t = await panel(A);
+    const evmActive = await A.eval(`document.querySelector('.on-chains .active')?.textContent`);
+    const lsChain = await A.eval(`localStorage.getItem('bump.chain')`);
+    check("a.evm-switch", /Robinhood/.test(evmActive) && lsChain === "evm", `active=${evmActive} bump.chain=${lsChain} text=${t.slice(0, 160).replace(/\n/g, " | ")}`);
+    await shot(A, "chain-evm");
+    await A.clickText("Solana Devnet", ".on-chains button");
+    await sleep(700);
+    check("a.switch-back-solana", (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)) === "Solana Devnet" && (await A.eval(`localStorage.getItem('bump.chain')`)) === "solana");
+  } else {
+    check("a.single-chain-solana-only", /Solana Devnet/.test(t) && !/Robinhood/.test(t), "chain selector hidden (EVM disabled)");
+  }
   await Promise.all([connect(A), connect(B)]);
   t = await panel(A);
   check("a.connected", /Solana Devnet/i.test(t) && /Address/i.test(t), t.slice(0, 200).replace(/\n/g, " | "));
