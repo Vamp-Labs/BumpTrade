@@ -31,6 +31,8 @@ export const createApp = (context: RoomContext) => {
       "Access-Control-Allow-Origin": allowed.includes(origin)
         ? origin
         : (allowed[0] ?? ""),
+      "Access-Control-Allow-Headers":
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization, solana-client",
       Vary: "Origin",
     };
   };
