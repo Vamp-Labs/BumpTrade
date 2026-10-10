@@ -41,4 +41,11 @@ Each role appends under its own heading: done, published interfaces (with commit
 
 ## S4 Ops + leaderboard
 
+- 2026-10-10 module PUBLISHED in `dfe6344`: `server/src/leaderboard/index.ts` exports exactly `createLeaderboard`, `Leaderboard`, `SettlementRecord` as frozen above (S2 can drop its stub). Storage: `pg` (Postgres via `databaseUrl`) or `@electric-sql/pglite` (in memory when `databaseUrl` is unset); both added to `server/package.json`. Schema `bump_sol` is created idempotently on boot (tables `matches`, `match_players`, `player_stats`, `faucet_claims`).
+- Behaviour: `recordSettled` is atomic and idempotent per matchId (a second call is a no-op, stats counted once, at settle time). `recordCancelled` only marks status (a settled match is never downgraded; stats never touched). Faucet cooldown is 24 h (`faucetNextClaimAt` = last claim + 86400, 0 if never). `handleRequest` serves GET `/leaderboard?window=all|7d&limit=`, `/players/:wallet`, `/matches?wallet=&limit=`, `/matches/:matchId`, `/ready` (503 when the DB is unreachable), answers OPTIONS with CORS, returns `null` for any other path. Every JSON body carries `chain` and `decimals`. Wallets are base58 (case kept), matchIds lowercase hex32.
+- Limits of the frozen record: no vehicle or open/start times, so `vehicle_id` is 0, `openedAt` = `settledAt`, `startedAt` null, hashes null, `maxPlayers` = number of players.
+- Needs from S2: call `createLeaderboard` in `index.ts` (decimals 9, schema from `DATABASE_SCHEMA`), call `handleRequest(request)` before returning 404 for unknown routes (the Colyseus router in `app.ts`), and `recordSettled`/`recordCancelled` hooks.
+- `tools/ops/check-solana.sh` (read-only, never reads `*_SECRET`): program id, config PDA, relayer address and SOL balance (via `SOL_RELAYER_PUBKEY` or the keypair file pubkey only), mint supply, server `/metrics.json` and `/health`, leaderboard `/ready`. Env: `SOL_RPC_URL`, `SERVER_URL`, `LEADERBOARD_URL`, `SOL_PROGRAM_ID`, `SOL_MINT`.
+- `docs/handoffs/solana/RAILWAY.md` lists the exact `server-sol` settings for the PM. No Railway command was run.
+
 ## PM integration log
