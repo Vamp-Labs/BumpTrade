@@ -7,10 +7,10 @@ Real-time 3D multiplayer bumper-car arena. **Solana devnet is the default chain*
 ## How it works
 
 - **Client** (`src/`): Vite + three.js + Rapier. Offline mode against AI bots, and an online mode with wallet connect, free `BUMP` faucet and one-signature join.
-- **Game server** (`server/`): Colyseus 0.18 over WebSocket. Runs the authoritative Rapier simulation at 60 Hz, streams 30 Hz snapshots, relays joins (`joinWithSig`) and signs match results (EIP-712).
+- **Game server** (`server/`): Colyseus 0.18 over WebSocket. Runs the authoritative Rapier simulation at 60 Hz, streams 30 Hz snapshots, relays gasless joins (Solana: server-built transaction the player signs once; EVM: `joinWithSig`), signs match results, and serves a server-side RPC proxy and the Solana leaderboard.
 - **Solana program** (`solana/`): Anchor `bump_arena` (escrow, gasless join, settle, refund) with a Codama client in `packages/sol-client/`.
 - **EVM contracts** (`contracts/`): Foundry. `BumpArena` escrows `BUMP` stakes, verifies the signed result and pushes payouts; `MockBUMP` is the free ERC20 with a 24 h faucet.
-- **Indexer** (`indexer/`): Ponder. Indexes arena events and serves the leaderboard and match history API.
+- **Indexer** (`indexer/`, EVM only): Ponder. Indexes arena events and serves the leaderboard and match history API.
 - **Shared** (`packages/shared/`): protocol schemas, message types and the deterministic game rules used by server and client.
 
 ## Deployments
@@ -32,7 +32,7 @@ Record: `solana/deployments/devnet.json`. Gasless for players: the server relaye
 | `BumpArena` | `0xf00dAfa18463fDf3274bBe93EEB92f8Bf7567803` |
 | `MockBUMP` | `0x45AEF2fD87009Ff78EB29B7ac4346812093c2928` |
 
-Full deployment record: `contracts/deployments/46630.json`. Hosted on Railway (Singapore).
+Full deployment record: `contracts/deployments/46630.json`. The EVM server and indexer are stopped on Railway; set `VITE_ENABLE_EVM=true` on the client and redeploy `server` and `indexer` to bring it back.
 
 ## Repository layout
 
@@ -51,6 +51,10 @@ tools/asset-pipeline Blender and texture generation scripts used to build the GL
 Dockerfile.server    Railway image for the game server
 Dockerfile.indexer   Railway image for the indexer
 ```
+
+## Verified end to end
+
+A two-browser harness (`tools/e2e/solana-local`) with mock Wallet Standard wallets plays a full match and checks faucet, one-signature gasless join, settle payouts, vault balance and leaderboard. It runs against a local validator, against devnet, and against the live Railway deployment (`E2E_RAILWAY_SERVICE=server-sol`).
 
 ## Getting started
 

@@ -29,6 +29,8 @@ Each role appends under its own heading: done, published interfaces (with commit
 
 - 2026-10-10 (PM) RAILWAY: `server-sol` (Singapore, CHAIN=solana), `client` (Solana default) and `Postgres` live in project bump-trade; EVM `server` and `indexer` deployments taken down (services kept). Full devnet match proven by the E2E harness; live-URL run proved join (2/8 seats). Fixes: lobby race (room registers before open_match), fill timer init, RPC 429 retry.
 
+- 2026-10-10 (PM) LIVE E2E PASSED against Railway (client + server-sol + Helius via server RPC proxy): faucet, one-signature join, fill timer 30.8 s, match, on-chain settle, payouts match formula, vault empty, leaderboard. Bugs found and fixed on the way: CORS preflight rejected the `solana-client` header sent by @solana/kit in browsers (balances showed `...`), balance read retries, RPC proxy limits. Helius key no longer in the client bundle; EVM option hidden (`VITE_ENABLE_EVM`); replay volume mounted at /app/server/replays.
+
 ## S1 Program
 
 - 2026-10-10 DONE (S1). Program id `3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz` (keypair `solana/target/deploy/bump_arena-keypair.json`, not committed; the PM deploys with it). IDL `solana/idl/bump_arena.json`. Anchor 1.0.1, anchor-spl 1.0.1, classic SPL Token. Details, layout and the exact PM deploy command in `solana/README.md`.
