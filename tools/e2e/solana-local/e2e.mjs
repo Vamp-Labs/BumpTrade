@@ -30,7 +30,7 @@ const CFG = {
   joinWindowS: Number(E("E2E_JOIN_WINDOW_S", "120")),
   expireDelayMs: Number(E("E2E_EXPIRE_DELAY_MS", "62000")),
 };
-for (const k of ["mint", "program", "treasury", "relayer", "serverLog"]) if (!CFG[k]) throw new Error(`missing E2E_${k.toUpperCase()}`);
+for (const k of ["mint", "program", "treasury", "relayer", ...(process.env.E2E_RAILWAY_SERVICE ? [] : ["serverLog"])]) if (!CFG[k]) throw new Error(`missing E2E_${k.toUpperCase()}`);
 mkdirSync(CFG.out, { recursive: true });
 if (CFG.shots) mkdirSync(CFG.shots, { recursive: true });
 
@@ -54,7 +54,23 @@ async function shot(p, name) {
 const panel = (p) => p.eval(`[...document.querySelectorAll('.on-backdrop.show')].map(e=>e.innerText).join('\\n---\\n')`);
 const jget = async (path) => { const r = await fetch(CFG.server + path); return { status: r.status, body: await r.json().catch(() => null) }; };
 
+const RAILWAY_SERVICE = process.env.E2E_RAILWAY_SERVICE ?? "";
+function railwayEvents(since) {
+  let out = "";
+  try { out = execFileSync("railway", ["logs", "--service", RAILWAY_SERVICE, "--lines", "500"], { encoding: "utf8", timeout: 30000, env: { ...process.env, RAILWAY_CALLER: "skill:use-railway@1.6.1" } }); } catch { return []; }
+  const events = [];
+  for (const line of out.split("\n")) {
+    const evt = /evt="([^"]+)"/.exec(line);
+    const ts = /\bts=(\d+)/.exec(line);
+    if (!evt || !ts) continue;
+    const e = { evt: evt[1], ts: Number(ts[1]) };
+    for (const m of line.matchAll(/\b(matchId|wallet|txHash|code|error|roomId)="([^"]*)"/g)) e[m[1]] = m[2];
+    if (e.ts >= since) events.push(e);
+  }
+  return events;
+}
 function logEvents(since = 0) {
+  if (RAILWAY_SERVICE) return railwayEvents(since);
   return readFileSync(CFG.serverLog, "utf8").split("\n").filter((l) => l.startsWith("{")).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((e) => e && e.ts >= since);
 }
 async function waitLog(pred, timeout, since) {
@@ -63,7 +79,7 @@ async function waitLog(pred, timeout, since) {
     const hit = logEvents(since).find(pred);
     if (hit) return hit;
     if (Date.now() - t0 > timeout) return null;
-    await sleep(300);
+    await sleep(RAILWAY_SERVICE ? 3000 : 300);
   }
 }
 
