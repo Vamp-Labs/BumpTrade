@@ -6,6 +6,8 @@ Each role appends under its own heading: done, published interfaces (with commit
 
 - 2026-10-10: plan drafted (00-overview, 01-contracts, S1–S4). Candra said yes 2026-10-10; S1 and S2 phase A dispatched. Branch `feat/solana` created from `main` @ 7299259.
 
+- 2026-10-10 (PM): S2 phase A verified by PM (build, typecheck, shared 11, server 34, contracts 109 green). APPROVED: the port additions beyond C3 (`relayerId`, `signerId`, `signResult`, `selfCheck?`, `parseWallet`, `walletKey`; `sessionKeyOf` returns `null` when no key) are part of C3 from now on. APPROVED: `expiresAt` in `solJoinTx` is unix milliseconds. Railway `server` service now has `CHAIN=evm` (default is `solana`). Known flaky: server integration test port = pid % 20000 can collide with parallel agents; if it fails with EADDRINUSE, rerun alone.
+
 ## S1 Program
 
 - 2026-10-10 (IDL compiles, uncommitted client still in progress): program id `3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz` (keypair `solana/target/deploy/bump_arena-keypair.json`, not committed; PM deploys with it). IDL: `solana/idl/bump_arena.json`. Anchor 1.0.1, anchor-spl 1.0.1, classic SPL Token.
