@@ -1,6 +1,6 @@
 import { createPublicClient, defineChain, fallback, http, type Chain, type PublicClient } from 'viem';
 import { robinhoodTestnet } from 'viem/chains';
-import { env } from '../config/env';
+import { env } from '../../config/env';
 
 function buildChain(): Chain {
   if (env.chainId === robinhoodTestnet.id) return robinhoodTestnet;

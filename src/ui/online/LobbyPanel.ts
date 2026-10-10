@@ -1,5 +1,6 @@
 import { faucet, type FaucetState } from '../../chain/faucet';
-import { formatBump } from '../../chain/token';
+import { getActiveChain, type ChainId } from '../../chain/port';
+import { renderChainSelector } from './chainSelector';
 import { button, clear, h, overlayRoot, row } from './dom';
 import { renderFaucetBlock } from './faucetBlock';
 import './online.css';
@@ -57,6 +58,7 @@ export class LobbyPanel {
   public onJoin?: () => void;
   public onLeave?: () => void;
   public onFaucet?: () => void;
+  public onSelectChain?: (id: ChainId) => void;
   private readonly backdrop: HTMLElement;
   private readonly panel: HTMLElement;
   private visible = false;
@@ -103,6 +105,7 @@ export class LobbyPanel {
     const seatPill = h('span', 'on-pill', `${m.seats}/${m.maxSeats} SEATS`);
     head.appendChild(seatPill);
     this.panel.appendChild(head);
+    renderChainSelector(this.panel, (id) => this.onSelectChain?.(id));
 
     if (m.stage === 'connecting') {
       const status = h('div', 'on-status');
@@ -118,10 +121,11 @@ export class LobbyPanel {
       return;
     }
 
+    const chain = getActiveChain();
     const well = h('div', 'on-well');
     well.append(row('Match', shortMatch(m.matchId)));
-    well.append(row('Stake', `${formatBump(m.stakeAmount)} BUMP`, 'gold'));
-    well.append(row('Your BUMP', m.bumpBalance === null ? '...' : formatBump(m.bumpBalance)));
+    well.append(row('Stake', `${chain.formatAmount(m.stakeAmount)} BUMP`, 'gold'));
+    well.append(row('Your BUMP', m.bumpBalance === null ? '...' : chain.formatAmount(m.bumpBalance)));
     if (m.stage === 'lobby') {
       well.append(row('Join window', remaining(m.joinDeadline)));
       well.append(row('Match starts in', m.fillEndsAt > 0 ? remaining(m.fillEndsAt) : 'waiting for 2nd player'));

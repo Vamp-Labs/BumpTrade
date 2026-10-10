@@ -503,3 +503,15 @@ body.online-mode #pause-restart-btn {
   letter-spacing: 1px;
   color: #1ef66d;
 }
+
+body[data-chain='solana'] .on-footer {
+  display: none;
+}
+
+.on-chains .on-seg {
+  flex: 1;
+}
+
+.on-panel > .on-chains {
+  margin-bottom: 14px;
+}

@@ -1,6 +1,6 @@
 import { JOIN_INTENT_TYPES, buildDomain, type JoinIntentMessage } from '@bump/shared';
 import type { Address, Hex, WalletClient } from 'viem';
-import { env } from '../config/env';
+import { env } from '../../config/env';
 import { chain } from './clients';
 
 export type SignedJoin = JoinIntentMessage;

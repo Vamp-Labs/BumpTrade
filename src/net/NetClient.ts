@@ -1,9 +1,19 @@
 import { Client, type InputHandle, type Room } from '@colyseus/sdk';
-import { CLAIM_SEAT_MESSAGE, InputFrame, JOIN_INTENT_MESSAGE, MatchState, type ClaimSeatMessage } from '@bump/shared';
-import type { Address, Hex } from 'viem';
-import type { SignedJoin } from '../chain/intent';
-import type { SessionKey } from '../chain/sessionKey';
-import { env } from '../config/env';
+import {
+  CLAIM_SEAT_MESSAGE,
+  InputFrame,
+  JOIN_INTENT_MESSAGE,
+  MatchState,
+  SOL_JOIN_PREPARE_MESSAGE,
+  SOL_JOIN_SUBMIT_MESSAGE,
+  type ClaimSeatMessage,
+  type SolJoinPrepareMessage,
+  type SolJoinSubmitMessage,
+} from '@bump/shared';
+import type { Hex } from 'viem';
+import type { SignedJoin } from '../chain/evm/intent';
+import { walletKey } from '../chain/format';
+import { getActiveChain, type SessionKeyHandle } from '../chain/port';
 import type { EncodedInput } from './inputEncoder';
 import {
   ROOM_NAME,
@@ -23,7 +33,17 @@ export interface NetHandlers {
   onClose(code: number): void;
 }
 
+export type EventVerdict = 'ignore' | 'take' | 'see';
+
+interface EventWaiter {
+  accept(event: ServerEvent): EventVerdict;
+  resolve(event: ServerEvent): void;
+  reject(error: Error): void;
+  timer: number;
+}
+
 export class NetClient {
+  private readonly waiters = new Set<EventWaiter>();
   private client: Client | null = null;
   private room: Room | null = null;
   private inputHandle: InputHandle<InputFrame> | null = null;
@@ -41,7 +61,7 @@ export class NetClient {
 
   public async connect(vehicleId: number): Promise<void> {
     this.closed = false;
-    this.client = new Client(env.gameServerUrl);
+    this.client = new Client(getActiveChain().gameServerUrl);
     const room = await this.client.joinOrCreate(ROOM_NAME, { vehicleId }, MatchState);
     this.attach(room);
   }
@@ -58,7 +78,7 @@ export class NetClient {
     });
     room.onMessage('*', (type, payload) => {
       const event = normalizeEvent(type, payload);
-      if (event) this.handlers.onEvent(event);
+      if (event && !this.dispatchWaiters(event)) this.handlers.onEvent(event);
     });
     room.onDrop(() => this.handlers.onDrop());
     room.onReconnect(() => {
@@ -71,6 +91,45 @@ export class NetClient {
     room.onError((code, message) => {
       this.handlers.onEvent({ t: 'error', code: 'CHAIN_UNAVAILABLE', message: message ?? `Connection error ${code}` });
     });
+  }
+
+  private dispatchWaiters(event: ServerEvent): boolean {
+    let taken = false;
+    for (const waiter of Array.from(this.waiters)) {
+      const verdict = waiter.accept(event);
+      if (verdict === 'ignore') continue;
+      this.waiters.delete(waiter);
+      window.clearTimeout(waiter.timer);
+      waiter.resolve(event);
+      if (verdict === 'take') {
+        taken = true;
+        break;
+      }
+    }
+    return taken;
+  }
+
+  public awaitEvent(accept: (event: ServerEvent) => EventVerdict, timeoutMs: number): Promise<ServerEvent> {
+    return new Promise((resolve, reject) => {
+      const waiter: EventWaiter = {
+        accept,
+        resolve,
+        reject,
+        timer: window.setTimeout(() => {
+          this.waiters.delete(waiter);
+          reject(new Error('Timed out waiting for the arena server'));
+        }, timeoutMs),
+      };
+      this.waiters.add(waiter);
+    });
+  }
+
+  private rejectWaiters(): void {
+    for (const waiter of Array.from(this.waiters)) {
+      window.clearTimeout(waiter.timer);
+      waiter.reject(new Error('Connection to the arena closed'));
+    }
+    this.waiters.clear();
   }
 
   public getRoomId(): string {
@@ -95,18 +154,17 @@ export class NetClient {
     });
   }
 
-  public async claimSeat(wallet: Address, sessionKey: SessionKey, matchId: string): Promise<void> {
+  public async claimSeat(wallet: string, sessionKey: SessionKeyHandle, matchId: string): Promise<void> {
     const room = this.room;
     if (!room) throw new Error('Not connected to a room');
     const issuedAt = Date.now();
-    const signature = await sessionKey.account.signMessage({
-      message: seatMessage({ matchId: matchId as Hex, wallet, roomId: room.roomId, issuedAt }),
-    });
+    const signature = await sessionKey.signSeat(seatMessage({ matchId: matchId as Hex, wallet, roomId: room.roomId, issuedAt }));
     const payload: ClaimSeatMessage = {
-      wallet: wallet.toLowerCase() as Address,
-      sessionKey: sessionKey.account.address,
+      wallet: walletKey(wallet),
+      sessionKey: sessionKey.publicId,
       issuedAt,
       signature,
+      ...(sessionKey.scheme === 'ed25519' ? { scheme: 'ed25519' as const } : {}),
     };
     room.send(CLAIM_SEAT_MESSAGE, payload);
   }
@@ -115,6 +173,18 @@ export class NetClient {
     const room = this.room;
     if (!room) throw new Error('Not connected to a room');
     room.send(JOIN_INTENT_MESSAGE, signed);
+  }
+
+  public sendSolJoinPrepare(message: SolJoinPrepareMessage): void {
+    const room = this.room;
+    if (!room) throw new Error('Not connected to a room');
+    room.send(SOL_JOIN_PREPARE_MESSAGE, message);
+  }
+
+  public sendSolJoinSubmit(message: SolJoinSubmitMessage): void {
+    const room = this.room;
+    if (!room) throw new Error('Not connected to a room');
+    room.send(SOL_JOIN_SUBMIT_MESSAGE, message);
   }
 
   public estimateTick(): number {
@@ -145,6 +215,7 @@ export class NetClient {
 
   public async leave(): Promise<void> {
     this.closed = true;
+    this.rejectWaiters();
     const room = this.room;
     this.room = null;
     this.inputHandle = null;

@@ -51,10 +51,6 @@ function isEip6963Detail(value: unknown): value is Eip6963Detail {
   return !!detail.info && typeof detail.info.uuid === 'string' && !!detail.provider;
 }
 
-export function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
 export class WalletController {
   private state: WalletState = {
     status: 'disconnected',

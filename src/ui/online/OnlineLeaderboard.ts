@@ -1,6 +1,5 @@
-import { formatBump } from '../../chain/token';
-import { shortAddress } from '../../chain/wallet';
-import { addressUrl, env } from '../../config/env';
+import { shortAddress, walletKey } from '../../chain/format';
+import { CHAIN_IDS, CHAIN_META, getActiveChain, type ChainId } from '../../chain/port';
 import { aliasFor } from './alias';
 import { clear, externalLink, h } from './dom';
 import './online.css';
@@ -41,21 +40,21 @@ function parseRows(value: unknown): LeaderboardRow[] {
   });
 }
 
-async function fetchRows(window: LeaderboardWindow, limit: number): Promise<LeaderboardRow[]> {
-  const response = await fetch(`${env.indexerUrl}/leaderboard?window=${window}&limit=${limit}`);
+async function fetchRows(chain: ChainId, window: LeaderboardWindow, limit: number): Promise<LeaderboardRow[]> {
+  const response = await fetch(`${CHAIN_META[chain].leaderboardUrl}/leaderboard?window=${window}&limit=${limit}`);
   if (!response.ok) throw new Error(`Indexer returned ${response.status}`);
   return parseRows(await response.json());
 }
 
-export async function fetchStanding(wallet: string): Promise<Standing | null> {
-  const rows = await fetchRows('all', STANDING_LIMIT);
-  const index = rows.findIndex((r) => r.wallet.toLowerCase() === wallet.toLowerCase());
+export async function fetchStanding(chain: ChainId, wallet: string): Promise<Standing | null> {
+  const rows = await fetchRows(chain, 'all', STANDING_LIMIT);
+  const index = rows.findIndex((r) => walletKey(r.wallet) === walletKey(wallet));
   if (index < 0) return null;
   const row = rows[index];
   return { rank: index + 1, total: rows.length, matches: row.matches, wins: row.wins, netPnl: row.netPnl };
 }
 
-export function formatPnl(raw: string): { text: string; className: string } {
+export function formatPnl(raw: string, chain: ChainId): { text: string; className: string } {
   let amount: bigint;
   try {
     amount = BigInt(raw);
@@ -64,7 +63,7 @@ export function formatPnl(raw: string): { text: string; className: string } {
   }
   if (amount === 0n) return { text: '0', className: '' };
   const negative = amount < 0n;
-  const text = `${negative ? '-' : '+'}${formatBump(negative ? -amount : amount)}`;
+  const text = `${negative ? '-' : '+'}${CHAIN_META[chain].formatAmount(negative ? -amount : amount)}`;
   return { text, className: negative ? 'loss' : 'gain' };
 }
 
@@ -76,12 +75,15 @@ export class OnlineLeaderboard {
   private host: HTMLElement | null = null;
   private requestId = 0;
   private myWallet: string | null = null;
+  private myChain: ChainId = getActiveChain().id;
+  private chain: ChainId = getActiveChain().id;
   private window: LeaderboardWindow = 'all';
   private rows: LeaderboardRow[] = [];
   private timer: number | null = null;
 
-  public setWallet(address: string | null): void {
-    this.myWallet = address ? address.toLowerCase() : null;
+  public setWallet(address: string | null, chain: ChainId): void {
+    this.myWallet = address ? walletKey(address) : null;
+    this.myChain = chain;
     if (this.host && this.rows.length > 0) this.renderRows(this.host, this.rows);
   }
 
@@ -116,7 +118,7 @@ export class OnlineLeaderboard {
       host.appendChild(loading);
     }
     try {
-      const rows = await fetchRows(this.window, 50);
+      const rows = await fetchRows(this.chain, this.window, 50);
       if (id !== this.requestId || this.host !== host) return;
       this.rows = rows;
       this.renderRows(host, rows);
@@ -128,6 +130,20 @@ export class OnlineLeaderboard {
   }
 
   private segments(): HTMLElement {
+    const wrap = h('div', 'on-lb-filters');
+    const chains = h('div', 'on-segs on-chains');
+    for (const id of CHAIN_IDS) {
+      const seg = h('button', `on-seg${this.chain === id ? ' active' : ''}`, CHAIN_META[id].pill);
+      seg.type = 'button';
+      seg.addEventListener('click', () => {
+        if (this.chain === id) return;
+        this.chain = id;
+        this.rows = [];
+        void this.load(true);
+      });
+      chains.appendChild(seg);
+    }
+    wrap.appendChild(chains);
     const bar = h('div', 'on-segs');
     const items: Array<[LeaderboardWindow, string]> = [
       ['all', 'ALL TIME'],
@@ -144,7 +160,8 @@ export class OnlineLeaderboard {
       });
       bar.appendChild(seg);
     }
-    return bar;
+    wrap.appendChild(bar);
+    return wrap;
   }
 
   private renderError(host: HTMLElement, message: string): void {
@@ -158,13 +175,13 @@ export class OnlineLeaderboard {
   }
 
   private isMe(wallet: string): boolean {
-    return this.myWallet !== null && wallet.toLowerCase() === this.myWallet;
+    return this.myWallet !== null && this.myChain === this.chain && walletKey(wallet) === this.myWallet;
   }
 
   private podium(rows: LeaderboardRow[]): HTMLElement {
     const wrap = h('div', 'on-podium');
     rows.slice(0, 3).forEach((r, index) => {
-      const pnl = formatPnl(r.netPnl);
+      const pnl = formatPnl(r.netPnl, this.chain);
       const card = h('div', `on-pod p${index + 1}${this.isMe(r.wallet) ? ' me' : ''}`);
       card.append(
         h('div', 'on-pod-rank', String(index + 1)),
@@ -212,14 +229,14 @@ export class OnlineLeaderboard {
     table.appendChild(h('thead')).appendChild(headRow);
     const body = h('tbody');
     rows.forEach((r, index) => {
-      const pnl = formatPnl(r.netPnl);
+      const pnl = formatPnl(r.netPnl, this.chain);
       const me = this.isMe(r.wallet);
       const tr = h('tr', me ? 'me' : '');
       const rank = h('td');
       rank.appendChild(h('span', `on-rank${index === 0 ? ' first' : ''}`, String(index + 1)));
       const player = h('td', 'on-player');
       player.append(h('div', 'on-alias', me ? `${aliasFor(r.wallet)} (YOU)` : aliasFor(r.wallet)));
-      player.append(externalLink(shortAddress(r.wallet), addressUrl(r.wallet)));
+      player.append(externalLink(shortAddress(r.wallet), CHAIN_META[this.chain].explorerAddress(r.wallet)));
       tr.append(
         rank,
         player,

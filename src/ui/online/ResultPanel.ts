@@ -1,5 +1,4 @@
-import { formatBump } from '../../chain/token';
-import { txUrl } from '../../config/env';
+import { getActiveChain } from '../../chain/port';
 import { aliasFor } from './alias';
 import { button, clear, externalLink, h, overlayRoot } from './dom';
 import type { Standing } from './OnlineLeaderboard';
@@ -117,7 +116,7 @@ export class ResultPanel {
       rank.appendChild(h('span', `on-rank${r.rank === 1 ? ' first' : ''}`, String(r.rank)));
       const player = h('td', '', r.isMe ? `${aliasFor(r.wallet)} (you)` : aliasFor(r.wallet));
       const bag = h('td', 'num', `$${r.finalBalance}`);
-      const payout = h('td', 'num', r.payout > 0n ? formatBump(r.payout) : '0');
+      const payout = h('td', 'num', r.payout > 0n ? getActiveChain().formatAmount(r.payout) : '0');
       tr.append(rank, player, bag, payout);
       body.appendChild(tr);
     }
@@ -133,8 +132,8 @@ export class ResultPanel {
     if (m.stage === 'settling' || m.stage === 'ended') {
       line.append(h('span', 'on-spinner'), h('span', '', m.stage === 'ended' ? 'WAITING FOR SETTLEMENT' : 'SETTLING…'));
     } else if (m.stage === 'settled') {
-      line.append(h('span', '', mine ? `PAID ${formatBump(mine.payout)} BUMP TO YOUR WALLET` : 'SETTLED'));
-      if (m.settleTx) line.append(externalLink('View settle transaction', txUrl(m.settleTx)));
+      line.append(h('span', '', mine ? `PAID ${getActiveChain().formatAmount(mine.payout)} BUMP TO YOUR WALLET` : 'SETTLED'));
+      if (m.settleTx) line.append(externalLink('View settle transaction', getActiveChain().explorerTx(m.settleTx)));
     } else if (m.stage === 'failed') {
       line.append(h('span', '', m.refundPending ? 'SETTLEMENT FAILED. STAKE REFUND IS BEING SENT' : 'SETTLEMENT FAILED. RETRYING'));
     } else {

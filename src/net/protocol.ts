@@ -13,6 +13,7 @@ import {
   type ServerEvent,
 } from '@bump/shared';
 import type { Hex } from 'viem';
+import { walletKey } from '../chain/format';
 import type { VehicleType } from '../vehicles/VehicleTypes';
 
 export { CarFlag, CarState, MarketEventKind, Phase, ROOM_NAME, seatMessage };
@@ -88,7 +89,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 function readCar(raw: unknown, key: string): ServerCar {
   const c = asRecord(raw);
   return {
-    wallet: str(c.wallet, key).toLowerCase(),
+    wallet: walletKey(str(c.wallet, key)),
     seat: num(c.seat),
     vehicle: num(c.vehicle),
     connected: c.connected !== false,
@@ -162,6 +163,7 @@ export function normalizeEvent(type: string | number, payload: unknown): ServerE
   const event = { ...body, t: kind };
   switch (kind) {
     case 'joinResult':
+    case 'solJoinTx':
     case 'seat':
     case 'bump':
     case 'eliminate':

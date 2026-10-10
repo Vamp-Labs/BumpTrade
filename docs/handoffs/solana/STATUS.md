@@ -39,6 +39,13 @@ Each role appends under its own heading: done, published interfaces (with commit
 
 ## S3 Client
 
+- 2026-10-10 DONE (S3, wire-up against the C4 types; live devnet verification pending). `pnpm exec tsc --noEmit -p .` and `pnpm build` green.
+- Port `src/chain/port.ts` (`ClientChain`, `getActiveChain`, `setActiveChain`, `onActiveChainChange`, selection in `localStorage` `bump.chain`, default from `VITE_CHAIN_DEFAULT`, else `solana`). Additive members beyond C6: `gameServerUrl`, `gameServerHttpUrl`, `leaderboardUrl`, `defaultStake`, `claimAmount`, `isConfigured`, `isTokenConfigured`, `clearSessionKey`, `describeError`, `formatAmount`, `nextClaimAtFallback`; `join` takes an extra `onSigned` callback and resolves when the server confirms (`joinResult`) on Solana, right after `joinIntent` is sent on EVM.
+- EVM modules moved to `src/chain/evm/` unchanged; adapter in `src/chain/evm/index.ts`. Solana adapter in `src/chain/solana/` (Wallet Standard discovery, silent auto-connect via `bump.sol.wallet`, `solana:signTransaction`, ed25519 session key via `@noble/curves`, reads via `@bump/sol-client`).
+- Client env: C8 names plus defaults in `src/config/env.ts`; Solana needs `VITE_SOL_MINT` (until `deployments.mint` is set) for `isConfigured()`.
+- Root `package.json` gained `@bump/sol-client`, `@solana/kit` 8.4.0, `@wallet-standard/*`, `@solana/wallet-standard-features`, `@noble/curves` 1.9.1.
+- Needs from S2: none open. Expected server behaviour: `solJoinTx.expiresAt` in ms, errors `TX_EXPIRED` / `TX_TAMPERED` sent as `error` events, `joinResult.wallet` = base58 as sent in `solJoinPrepare.player`, `/faucet` and `/faucet/status` on the Solana game server HTTP origin, `/leaderboard` and `/matches/:id` on `VITE_SOL_LEADERBOARD_URL` (default: the game server origin).
+
 ## S4 Ops + leaderboard
 
 - 2026-10-10 module PUBLISHED in `dfe6344`: `server/src/leaderboard/index.ts` exports exactly `createLeaderboard`, `Leaderboard`, `SettlementRecord` as frozen above (S2 can drop its stub). Storage: `pg` (Postgres via `databaseUrl`) or `@electric-sql/pglite` (in memory when `databaseUrl` is unset); both added to `server/package.json`. Schema `bump_sol` is created idempotently on boot (tables `matches`, `match_players`, `player_stats`, `faucet_claims`).

@@ -1,13 +1,16 @@
 import * as THREE from 'three';
-import type { Address, Hex } from 'viem';
-import { isArenaConfigured, readMatch, readSessionKeyOf, type MatchSnapshot } from '../chain/arena';
-import { describeChainError } from '../chain/errors';
 import { describeServerCode, faucet } from '../chain/faucet';
-import { signJoinIntent } from '../chain/intent';
-import { clearSessionKey, createSessionKey, loadSessionKey, type SessionKey } from '../chain/sessionKey';
-import { DEFAULT_STAKE } from '../chain/token';
-import { shortAddress, wallet } from '../chain/wallet';
-import { env } from '../config/env';
+import { shortAddress, walletKey } from '../chain/format';
+import {
+  getActiveChain,
+  onActiveChainChange,
+  setActiveChain,
+  type ChainId,
+  type ClientChain,
+  type MatchSnapshot,
+  type SessionKeyHandle,
+} from '../chain/port';
+import { ServerJoinError } from '../chain/serverError';
 import { claimFaucet } from '../ui/online/faucetBlock';
 import type { VehicleInput } from '../input/InputManager';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
@@ -65,7 +68,8 @@ export class OnlineController {
   private lastPhase: number = -1;
   private vehicleType: VehicleType = 'hood_bull';
   private localWallet = '';
-  private sessionKey: SessionKey | null = null;
+  private sessionKey: SessionKeyHandle | null = null;
+  private unwatchWallet: (() => void) | null = null;
   private lobby: LobbyModel = emptyLobbyModel();
   private result: ResultModel = emptyResultModel();
   private standingLoading = false;
@@ -88,24 +92,49 @@ export class OnlineController {
   private joinStartedAt = 0;
 
   constructor(private readonly host: OnlineHost) {
-    this.walletPanel = new WalletPanel(wallet);
-    wallet.discover();
+    this.walletPanel = new WalletPanel();
+    this.chain.wallet.discover();
     this.walletPanel.onClose = () => this.closeWallet();
+    this.walletPanel.onSelectChain = (id) => this.selectChain(id);
+    this.lobbyPanel.onSelectChain = (id) => this.selectChain(id);
     this.walletPanel.onContinue = () => {
       this.walletPanel.hide();
       this.host.exitToVehicleSelect();
     };
     this.lobbyPanel.onJoin = () => void this.signAndJoin();
     this.lobbyPanel.onLeave = () => this.leave();
-    this.lobbyPanel.onFaucet = () => claimFaucet(wallet.getState().address, wallet);
+    this.lobbyPanel.onFaucet = () => claimFaucet(this.chain.wallet.getState().address, this.chain.wallet);
     this.resultPanel.onBack = () => this.leave();
-    wallet.subscribe((state) => {
-      this.leaderboard.setWallet(state.address);
+    this.watchWallet();
+    onActiveChainChange(() => this.watchWallet());
+  }
+
+  private get chain(): ClientChain {
+    return getActiveChain();
+  }
+
+  private key(address: string): string {
+    return walletKey(address);
+  }
+
+  private watchWallet(): void {
+    this.unwatchWallet?.();
+    const chain = this.chain;
+    this.unwatchWallet = chain.wallet.subscribe((state) => {
+      this.leaderboard.setWallet(state.address, chain.id);
       if (this.stage === 'lobby') {
         const low = state.bumpBalance !== null && state.bumpBalance >= this.lobby.stakeAmount;
         this.patchLobby({ bumpBalance: state.bumpBalance, ...(low ? { lowBalance: false } : {}) });
       }
     });
+  }
+
+  private selectChain(id: ChainId): void {
+    if (id === this.chain.id) return;
+    const inLobby = this.stage === 'lobby';
+    if (inLobby) this.resetToIdle();
+    setActiveChain(id);
+    if (inLobby) this.openWallet();
   }
 
   public isActive(): boolean {
@@ -137,18 +166,19 @@ export class OnlineController {
   }
 
   public async launch(type: VehicleType): Promise<void> {
-    if (!wallet.isReady() || !isArenaConfigured()) {
+    const chain = this.chain;
+    if (!chain.wallet.isReady() || !chain.isConfigured()) {
       this.openWallet();
       return;
     }
     this.vehicleType = type;
-    this.localWallet = (wallet.getState().address ?? '').toLowerCase();
+    this.localWallet = this.key(chain.wallet.getState().address ?? '');
     this.stage = 'lobby';
     this.generation += 1;
     const generation = this.generation;
-    this.lobby = { ...emptyLobbyModel(), stage: 'connecting', bumpBalance: wallet.getState().bumpBalance };
-    void wallet.refreshBalance();
-    if (this.localWallet) void faucet.refresh(this.localWallet as Address);
+    this.lobby = { ...emptyLobbyModel(), stage: 'connecting', bumpBalance: chain.wallet.getState().bumpBalance };
+    void chain.wallet.refreshBalance();
+    if (this.localWallet) void faucet.refresh(this.localWallet);
     this.lobbyPanel.update(this.lobby);
     this.lobbyPanel.show();
     this.startLobbyClock();
@@ -206,28 +236,28 @@ export class OnlineController {
     const firstSight = this.lobby.matchId === '' && view.matchId !== '';
     this.patchLobby({
       matchId: view.matchId,
-      stakeAmount: stakeAmount > 0n ? stakeAmount : this.lobby.stakeAmount || DEFAULT_STAKE,
+      stakeAmount: stakeAmount > 0n ? stakeAmount : this.lobby.stakeAmount || this.chain.defaultStake,
       joinDeadline: view.joinDeadline,
       fillEndsAt: view.fillEndsAt,
       seats: Math.max(this.lobby.seats, this.seatedWallets.size),
     });
-    if (firstSight) void this.onMatchKnown(view.matchId as Hex);
+    if (firstSight) void this.onMatchKnown(view.matchId);
   }
 
-  private async onMatchKnown(matchId: Hex): Promise<void> {
+  private async onMatchKnown(matchId: string): Promise<void> {
     this.startChainClock();
-    const key = loadSessionKey(matchId);
+    const key = this.chain.loadSessionKey(matchId);
     if (key && this.lobby.action === 'idle') this.sessionKey = key;
     await this.refreshChain();
   }
 
-  private async checkRegistered(matchId: Hex): Promise<void> {
+  private async checkRegistered(matchId: string): Promise<void> {
     const key = this.sessionKey;
     if (!key || !this.localWallet || this.lobby.action === 'seated' || this.claimingSeat) return;
     if (this.stage !== 'lobby' || this.lobby.stage === 'cancelled') return;
     try {
-      const registered = await readSessionKeyOf(matchId, this.localWallet as Address);
-      if (registered.toLowerCase() !== key.account.address.toLowerCase()) return;
+      const registered = await this.chain.readSessionKeyOf(matchId, this.localWallet);
+      if (!registered || this.key(registered) !== this.key(key.publicId)) return;
       if (this.lobby.action === 'idle' || this.lobby.action === 'failed') this.patchLobby({ action: 'pending', error: null });
       await this.claimSeat();
     } catch {
@@ -260,16 +290,16 @@ export class OnlineController {
   private handleEvent(event: ServerEvent): void {
     switch (event.t) {
       case 'joinResult':
-        if (event.wallet.toLowerCase() === this.localWallet) {
+        if (this.key(event.wallet) === this.localWallet) {
           this.joinStartedAt = 0;
-          void wallet.refreshBalance();
+          void this.chain.wallet.refreshBalance();
           void this.claimSeat();
         }
         break;
       case 'seat':
-        this.seatedWallets.add(event.wallet.toLowerCase());
+        this.seatedWallets.add(this.key(event.wallet));
         this.patchLobby({ seats: Math.max(this.lobby.seats, this.seatedWallets.size) });
-        if (event.wallet.toLowerCase() === this.localWallet) {
+        if (this.key(event.wallet) === this.localWallet) {
           this.claimingSeat = false;
           this.patchLobby({ action: 'seated', error: null });
         }
@@ -278,7 +308,7 @@ export class OnlineController {
         this.bridge?.bump(event);
         break;
       case 'eliminate':
-        this.eliminatedAt.set(event.car.toLowerCase(), event.tick);
+        this.eliminatedAt.set(this.key(event.car), event.tick);
         this.bridge?.eliminate(event);
         break;
       case 'marketEvent':
@@ -317,7 +347,7 @@ export class OnlineController {
       lowBalance: event.code === 'INSUFFICIENT_BALANCE' || this.lobby.lowBalance,
       error: describeServerCode(event.code, event.message, event.retryAfterS),
     });
-    if (event.code === 'INSUFFICIENT_BALANCE') void wallet.refreshBalance();
+    if (event.code === 'INSUFFICIENT_BALANCE') void this.chain.wallet.refreshBalance();
   }
 
   private handleClose(): void {
@@ -328,17 +358,16 @@ export class OnlineController {
 
   private async signAndJoin(): Promise<void> {
     const view = this.view;
-    const client = wallet.getClient();
-    const account = wallet.getState().address;
+    const chain = this.chain;
     const net = this.net;
-    if (!view?.matchId || !client || !account || !net || !wallet.isReady()) {
+    if (!view?.matchId || !net || !chain.wallet.isReady()) {
       this.patchLobby({ action: 'failed', error: 'Connect your wallet on the right network first' });
       return;
     }
-    const matchId = view.matchId as Hex;
-    const stake = this.lobby.stakeAmount > 0n ? this.lobby.stakeAmount : DEFAULT_STAKE;
-    await wallet.refreshBalance();
-    const balance = wallet.getState().bumpBalance;
+    const matchId = view.matchId;
+    const stake = this.lobby.stakeAmount > 0n ? this.lobby.stakeAmount : chain.defaultStake;
+    await chain.wallet.refreshBalance();
+    const balance = chain.wallet.getState().bumpBalance;
     if (balance !== null && balance < stake) {
       this.patchLobby({ action: 'failed', lowBalance: true, error: 'Not enough BUMP to stake' });
       return;
@@ -346,25 +375,42 @@ export class OnlineController {
 
     this.patchLobby({ action: 'signing', error: null, lowBalance: false });
     this.reclaimedStale = false;
-    const key = loadSessionKey(matchId) ?? createSessionKey(matchId);
-    this.sessionKey = key;
+    this.sessionKey = chain.loadSessionKey(matchId) ?? chain.createSessionKey(matchId);
     try {
-      const signed = await signJoinIntent(
-        client,
-        account,
+      await chain.join({
+        net,
         matchId,
-        key.account.address,
-        vehicleIdOf(this.vehicleType),
-        view.joinDeadline
-      );
-      net.sendJoin(signed);
-      this.patchLobby({ action: 'pending' });
-      this.joinStartedAt = performance.now();
-      this.startChainClock();
+        vehicleId: vehicleIdOf(this.vehicleType),
+        joinDeadline: view.joinDeadline,
+        onSigned: () => {
+          this.patchLobby({ action: 'pending' });
+          this.joinStartedAt = performance.now();
+          this.startChainClock();
+        },
+      });
       await this.refreshChain();
     } catch (error) {
-      this.patchLobby({ action: 'failed', error: describeChainError(error).message });
+      this.handleJoinError(error);
     }
+  }
+
+  private handleJoinError(error: unknown): void {
+    this.joinStartedAt = 0;
+    if (error instanceof ServerJoinError) {
+      if (error.code === 'ALREADY_JOINED' && this.sessionKey) {
+        void this.claimSeat();
+        return;
+      }
+      const lowBalance = error.code === 'INSUFFICIENT_BALANCE';
+      this.patchLobby({
+        action: 'failed',
+        lowBalance: lowBalance || this.lobby.lowBalance,
+        error: describeServerCode(error.code, error.message, error.retryAfterS),
+      });
+      if (lowBalance) void this.chain.wallet.refreshBalance();
+      return;
+    }
+    this.patchLobby({ action: 'failed', error: this.chain.describeError(error).message });
   }
 
   private async claimSeat(): Promise<void> {
@@ -374,10 +420,10 @@ export class OnlineController {
     if (!net || !key || !view?.matchId || !this.localWallet || this.claimingSeat) return;
     this.claimingSeat = true;
     try {
-      await net.claimSeat(this.localWallet as Address, key, view.matchId);
+      await net.claimSeat(this.localWallet, key, view.matchId);
     } catch (error) {
       this.claimingSeat = false;
-      this.patchLobby({ action: 'failed', error: describeChainError(error).message });
+      this.patchLobby({ action: 'failed', error: this.chain.describeError(error).message });
     }
   }
 
@@ -385,9 +431,9 @@ export class OnlineController {
     const matchId = this.view?.matchId;
     if (!matchId) return;
     try {
-      const snapshot = await readMatch(matchId as Hex);
+      const snapshot = await this.chain.readMatch(matchId);
       this.applyChain(snapshot);
-      await this.checkRegistered(matchId as Hex);
+      await this.checkRegistered(matchId);
       this.checkJoinTimeout();
     } catch {
       return;
@@ -425,7 +471,7 @@ export class OnlineController {
       patch.stage = 'failed';
     }
     if (snapshot.status === 'settled' || snapshot.status === 'cancelled') {
-      if (this.view?.matchId) clearSessionKey(this.view.matchId);
+      if (this.view?.matchId) this.chain.clearSessionKey(this.view.matchId);
     }
     this.patchResult(patch);
     if (this.stage === 'match' && (snapshot.status === 'settled' || snapshot.status === 'cancelled')) {
@@ -437,7 +483,7 @@ export class OnlineController {
     const matchId = this.view?.matchId;
     if (!matchId || this.result.settleTx) return;
     try {
-      const response = await fetch(`${env.indexerUrl}/matches/${matchId}`);
+      const response = await fetch(`${this.chain.leaderboardUrl}/matches/${matchId}`);
       if (!response.ok) return;
       const detail = (await response.json()) as { settleTx?: unknown };
       if (typeof detail.settleTx === 'string') this.patchResult({ settleTx: detail.settleTx });
@@ -457,14 +503,14 @@ export class OnlineController {
     const rows = ranking
       .map((r) => ({
         rank: r.rank,
-        wallet: r.wallet.toLowerCase(),
+        wallet: this.key(r.wallet),
         finalBalance: r.finalBalance,
         payout: rankingPayout(r),
-        isMe: r.wallet.toLowerCase() === this.localWallet,
+        isMe: this.key(r.wallet) === this.localWallet,
       }))
       .sort((a, b) => a.rank - b.rank);
     this.patchResult({ rows, stage: this.result.stage === 'ended' ? 'settling' : this.result.stage });
-    if (this.view && !this.view.matchId) this.view = { ...this.view, matchId: matchId as Hex };
+    if (this.view && !this.view.matchId) this.view = { ...this.view, matchId: matchId as MatchView['matchId'] };
     this.host.hud.showRoundCompleteBanner();
     this.startChainClock();
     this.showResultSoon();
@@ -519,7 +565,7 @@ export class OnlineController {
       this.bridge = new EventBridge({
         localWallet: this.localWallet,
         findCar: (w) => this.findCar(w),
-        carId: (w) => (w.toLowerCase() === this.localWallet ? 'player_car' : w.toLowerCase()),
+        carId: (w) => (this.key(w) === this.localWallet ? 'player_car' : this.key(w)),
         visuals: this.host.visuals,
       });
       this.host.hud.setOnlineMode(true);
@@ -533,7 +579,7 @@ export class OnlineController {
   }
 
   private findCar(walletAddress: string): HeroCar | undefined {
-    const key = walletAddress.toLowerCase();
+    const key = this.key(walletAddress);
     if (key === this.localWallet) return this.localCar?.getCar();
     return this.remotes.get(key)?.car;
   }
@@ -644,7 +690,7 @@ export class OnlineController {
       await new Promise((resolve) => window.setTimeout(resolve, delay));
       if (!this.standingLoading) return;
       try {
-        const standing = await fetchStanding(me);
+        const standing = await fetchStanding(this.chain.id, me);
         if (standing) {
           this.patchResult({ standing });
           this.leaderboard.refresh();

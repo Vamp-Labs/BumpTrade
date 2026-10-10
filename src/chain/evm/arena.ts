@@ -1,27 +1,15 @@
 import { bumpArenaAbi } from '@bump/contracts';
 import type { Address, Hex } from 'viem';
-import { env } from '../config/env';
+import { env } from '../../config/env';
+import type { MatchSnapshot, MatchStatus } from '../port';
 import { publicClient } from './clients';
-
-export type MatchStatus = 'none' | 'open' | 'started' | 'settled' | 'cancelled' | 'refunding';
-
-const STATUS_BY_INDEX: MatchStatus[] = ['none', 'open', 'started', 'settled', 'cancelled', 'refunding'];
-
-export interface MatchSnapshot {
-  stake: bigint;
-  startBalance: number;
-  maxPlayers: number;
-  playerCount: number;
-  status: MatchStatus;
-  joinDeadline: number;
-  settleDeadline: number;
-  pot: bigint;
-}
 
 function requireArena(): Address {
   if (!env.arenaAddress) throw new Error('Arena contract is not deployed yet');
   return env.arenaAddress;
 }
+
+const STATUS_BY_INDEX: MatchStatus[] = ['none', 'open', 'started', 'settled', 'cancelled', 'refunding'];
 
 export function isArenaConfigured(): boolean {
   return env.arenaAddress !== null;

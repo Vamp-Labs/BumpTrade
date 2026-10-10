@@ -1,6 +1,6 @@
-import type { Address } from 'viem';
-import { env } from '../config/env';
-import { readNextClaimAt } from './token';
+import { walletKey } from './format';
+import { getActiveChain } from './port';
+import { describeServerCode } from './serverError';
 
 export interface FaucetState {
   claiming: boolean;
@@ -11,36 +11,7 @@ export interface FaucetState {
 
 type Listener = (state: FaucetState) => void;
 
-const SERVER_ERROR_COPY: Record<string, string> = {
-  COOLDOWN: 'Already claimed today',
-  ClaimCooldown: 'Already claimed today',
-  RATE_LIMITED: 'Too many requests from this network, try later',
-  GLOBAL_LIMIT: 'Faucet is busy, try again later',
-  RELAYER_LOW: 'Gas sponsor is low on funds, try again later',
-  CHAIN_UNAVAILABLE: 'Chain unavailable, try again',
-  CLAIM_FAILED: 'Claim failed, try again',
-  INVALID_ADDRESS: 'Invalid wallet address',
-  JOIN_MALFORMED: 'Join request was invalid, retry',
-  BAD_SIGNATURE: 'Signature rejected, sign again',
-  INTENT_EXPIRED: 'Signature expired, sign again',
-  WRONG_MATCH: 'Match changed, retry',
-  MATCH_CLOSED: 'Join window closed',
-  INSUFFICIENT_BALANCE: 'Not enough BUMP to stake',
-  JOIN_PENDING: 'Join already in progress',
-  JOIN_FAILED: 'Join failed, try again',
-  ROOM_FULL: 'Match is full',
-  SEAT_REJECTED: 'Seat claim rejected',
-  NOT_JOINED: 'This wallet has not joined yet',
-};
-
-export function describeServerCode(code: string, fallback: string, retryAfterS?: number): string {
-  const copy = SERVER_ERROR_COPY[code];
-  if (!copy) return /RELAYER/i.test(code) ? SERVER_ERROR_COPY.RELAYER_LOW! : fallback || 'Request failed';
-  if (code === 'RATE_LIMITED' && retryAfterS && retryAfterS > 0) {
-    return `${copy} (${Math.ceil(retryAfterS / 60)} min)`;
-  }
-  return copy;
-}
+export { describeServerCode };
 
 function readNumber(value: unknown): number {
   const parsed = typeof value === 'string' ? Number(value) : value;
@@ -77,37 +48,43 @@ export class FaucetController {
     return Math.max(0, Math.ceil(this.state.nextClaimAt - Date.now() / 1000));
   }
 
-  public async refresh(address: Address): Promise<void> {
-    if (this.lastAddress !== address.toLowerCase()) {
-      this.lastAddress = address.toLowerCase();
+  private scopeOf(address: string): string {
+    return `${getActiveChain().id}:${walletKey(address)}`;
+  }
+
+  public async refresh(address: string): Promise<void> {
+    const scope = this.scopeOf(address);
+    if (this.lastAddress !== scope) {
+      this.lastAddress = scope;
       this.patch({ nextClaimAt: 0, txHash: null, error: null });
     }
     try {
       const nextClaimAt = await this.fetchNextClaimAt(address);
-      if (this.lastAddress === address.toLowerCase()) this.patch({ nextClaimAt });
+      if (this.lastAddress === scope) this.patch({ nextClaimAt });
     } catch {
       return;
     }
   }
 
-  private async fetchNextClaimAt(address: Address): Promise<number> {
+  private async fetchNextClaimAt(address: string): Promise<number> {
+    const chain = getActiveChain();
     try {
-      const response = await fetch(`${env.gameServerHttpUrl}/faucet/status?wallet=${address}`);
+      const response = await fetch(`${chain.gameServerHttpUrl}/faucet/status?wallet=${address}`);
       if (response.ok) {
         const body = asRecord(await response.json());
         if (typeof body.nextClaimAt === 'number') return body.nextClaimAt;
       }
     } catch {
-      return readNextClaimAt(address);
+      return chain.nextClaimAtFallback(address);
     }
-    return readNextClaimAt(address);
+    return chain.nextClaimAtFallback(address);
   }
 
-  public async claim(address: Address): Promise<boolean> {
+  public async claim(address: string): Promise<boolean> {
     if (this.state.claiming) return false;
     this.patch({ claiming: true, error: null, txHash: null });
     try {
-      const response = await fetch(`${env.gameServerHttpUrl}/faucet`, {
+      const response = await fetch(`${getActiveChain().gameServerHttpUrl}/faucet`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ wallet: address }),
