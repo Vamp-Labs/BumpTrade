@@ -28,7 +28,8 @@ import {
   compileTransaction,
   createKeyPairSignerFromBytes,
   createNoopSigner,
-  createSolanaRpc,
+  createDefaultRpcTransport,
+  createSolanaRpcFromTransport,
   createTransactionMessage,
   getBase64Encoder,
   getBase64EncodedWireTransaction,
@@ -59,7 +60,27 @@ export const FAUCET_AMOUNT = 1000n * 10n ** 9n;
 const COMMITMENT = "confirmed" as const;
 const TOKEN_AMOUNT_OFFSET = 64;
 
-type Rpc = ReturnType<typeof createSolanaRpc>;
+type Rpc = ReturnType<typeof createSolanaRpcFromTransport>;
+
+const isRateLimited = (error: unknown): boolean => {
+  const e = error as { context?: { statusCode?: number }; message?: string } | null;
+  return e?.context?.statusCode === 429 || /\b429\b|too many requests/i.test(e?.message ?? "");
+};
+
+export const createRetryingRpc = (url: string, maxAttempts = 7): Rpc => {
+  const base = createDefaultRpcTransport({ url });
+  const transport = (async (config: Parameters<typeof base>[0]) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await base(config);
+      } catch (error) {
+        if (attempt + 1 >= maxAttempts || !isRateLimited(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(4000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200)));
+      }
+    }
+  }) as typeof base;
+  return createSolanaRpcFromTransport(transport);
+};
 
 export class JoinTxError extends Error {
   constructor(
@@ -121,7 +142,7 @@ export class SolanaArenaChain implements ArenaChain {
   private readonly confirmTimeoutMs: number;
 
   constructor(private readonly options: SolanaArenaChainOptions) {
-    this.rpc = createSolanaRpc(options.rpcUrl);
+    this.rpc = createRetryingRpc(options.rpcUrl);
     this.programAddress = address(options.programId);
     this.mint = address(options.mint);
     this.treasury = address(options.treasury);
@@ -130,7 +151,7 @@ export class SolanaArenaChain implements ArenaChain {
     this.mintAuthority = options.mintAuthority;
     this.cooldown = options.cooldown ?? new MemoryFaucetCooldown();
     this.now = options.now ?? Date.now;
-    this.pollMs = options.pollMs ?? 250;
+    this.pollMs = options.pollMs ?? 600;
     this.confirmTimeoutMs = options.confirmTimeoutMs ?? 60_000;
   }
 
