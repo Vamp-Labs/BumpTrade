@@ -1,14 +1,16 @@
 import type { Hex } from "viem";
 import type { JoinIntentWire } from "../chain/join";
+import type { Hex32, SeatScheme, TxRef, WalletId } from "../chain/types";
 import type { BumpTier, EliminationCause } from "./enums";
 
 export type Address = `0x${string}`;
 
 export interface ClaimSeatMessage {
-  wallet: Address;
-  sessionKey: Address;
+  wallet: WalletId;
+  sessionKey: string;
   issuedAt: number;
-  signature: Hex;
+  signature: string;
+  scheme?: SeatScheme;
 }
 
 export interface JoinIntentMessage {
@@ -16,17 +18,36 @@ export interface JoinIntentMessage {
   signature: Hex;
 }
 
+export interface SolJoinPrepareMessage {
+  matchId: Hex32;
+  player: WalletId;
+  sessionKey: string;
+  vehicleId: number;
+}
+
+export interface SolJoinSubmitMessage {
+  matchId: Hex32;
+  signedTx: string;
+}
+
+export type SolJoinTxEvent = {
+  t: "solJoinTx";
+  matchId: Hex32;
+  tx: string;
+  expiresAt: number;
+};
+
 export type JoinResultEvent = {
   t: "joinResult";
-  matchId: Hex;
-  wallet: Address;
+  matchId: Hex32;
+  wallet: WalletId;
   seat: number;
-  txHash: Hex;
+  txHash: TxRef;
 };
 
 export type SeatEvent = {
   t: "seat";
-  wallet: Address;
+  wallet: WalletId;
   seat: number;
   vehicle: number;
 };
@@ -67,7 +88,7 @@ export type PhaseEvent = { t: "phase"; phase: number; tick: number };
 
 export type MatchStartEvent = {
   t: "matchStart";
-  matchId: Hex;
+  matchId: Hex32;
   liveStartTick: number;
   durationTicks: number;
   seed: Hex;
@@ -84,12 +105,12 @@ export interface RankingRow {
 
 export type MatchEndEvent = {
   t: "matchEnd";
-  matchId: Hex;
+  matchId: Hex32;
   endTick: number;
   ranking: RankingRow[];
-  inputLogHash: Hex;
-  replayHash: Hex;
-  resultSignature: Hex;
+  inputLogHash: Hex32;
+  replayHash: Hex32;
+  resultSignature: string;
 };
 
 export type SettlementStatus =
@@ -102,9 +123,9 @@ export type SettlementStatus =
 
 export type SettlementEvent = {
   t: "settlement";
-  matchId: Hex;
+  matchId: Hex32;
   status: SettlementStatus;
-  txHash?: Hex;
+  txHash?: TxRef;
   error?: string;
 };
 
@@ -127,7 +148,9 @@ export type JoinErrorCode =
   | "JOIN_PENDING"
   | "RATE_LIMITED"
   | "RELAYER_LOW"
-  | "JOIN_FAILED";
+  | "JOIN_FAILED"
+  | "TX_EXPIRED"
+  | "TX_TAMPERED";
 
 export type ErrorEvent = {
   t: "error";
@@ -146,7 +169,7 @@ export type FaucetErrorCode =
   | "CLAIM_FAILED";
 
 export interface FaucetSuccess {
-  txHash: Hex;
+  txHash: TxRef;
   nextClaimAt: number;
 }
 
@@ -158,7 +181,7 @@ export interface FaucetError {
 }
 
 export interface FaucetStatus {
-  wallet: Address;
+  wallet: WalletId;
   balance: string;
   nextClaimAt: number;
   canClaimNow: boolean;
@@ -182,6 +205,7 @@ export type CrateTakenEvent = {
 
 export type ServerEvent =
   | JoinResultEvent
+  | SolJoinTxEvent
   | SeatEvent
   | BumpEvent
   | EliminateEvent
@@ -197,6 +221,8 @@ export type ServerEvent =
 export const EVENT_CHANNEL = "ev";
 export const CLAIM_SEAT_MESSAGE = "claimSeat";
 export const JOIN_INTENT_MESSAGE = "joinIntent";
+export const SOL_JOIN_PREPARE_MESSAGE = "solJoinPrepare";
+export const SOL_JOIN_SUBMIT_MESSAGE = "solJoinSubmit";
 
 export const encodeButtons = (flags: {
   brake?: boolean;

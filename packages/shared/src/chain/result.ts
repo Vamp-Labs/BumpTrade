@@ -53,7 +53,7 @@ export const computePayouts = (
 
 export interface SeatMessageInput {
   matchId: Hex;
-  wallet: Address;
+  wallet: string;
   roomId: string;
   issuedAt: number;
 }
