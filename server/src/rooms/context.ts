@@ -1,4 +1,4 @@
-import type { ChainGateway } from "../chain/ChainGateway";
+import type { ArenaChain } from "../chain/ArenaChain";
 import type { RefundKeeper } from "../chain/RefundKeeper";
 import type { Settler } from "../chain/Settler";
 import type { ServerConfig } from "../config";
@@ -9,7 +9,7 @@ import type { RelayerGuard } from "../relay/RelayerGuard";
 
 export interface RoomContext {
   config: ServerConfig;
-  chain: ChainGateway;
+  chain: ArenaChain;
   settler: Settler;
   log: (line: Record<string, unknown>) => void;
   now: () => number;

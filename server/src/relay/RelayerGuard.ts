@@ -1,11 +1,11 @@
-import type { ChainGateway } from "../chain/ChainGateway";
+import type { ArenaChain } from "../chain/ArenaChain";
 
 export class RelayerGuard {
   private cached: { value: bigint; at: number } | null = null;
 
   constructor(
-    private readonly chain: ChainGateway,
-    readonly minBalanceWei: bigint,
+    private readonly chain: ArenaChain,
+    readonly minBalance: bigint,
     private readonly now: () => number,
     private readonly ttlMs = 5_000,
   ) {}
@@ -20,7 +20,7 @@ export class RelayerGuard {
   }
 
   async isLow(): Promise<boolean> {
-    return (await this.balance()) < this.minBalanceWei;
+    return (await this.balance()) < this.minBalance;
   }
 
   invalidate(): void {

@@ -7,43 +7,29 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import { buildDomain, RESULT_TYPES } from "@bump/shared";
-import { type Address, type Hex, hashTypedData, type LocalAccount } from "viem";
-import {
-  type ChainGateway,
-  MatchStatus,
-  type SettleResult,
-} from "./ChainGateway";
+import type { ChainResult, Hex32, TxRef, WalletId } from "@bump/shared";
+import { type ArenaChain, MatchStatus } from "./ArenaChain";
 
 export type SettleStatus = "submitted" | "confirmed" | "failed";
 
 export interface SettleUpdate {
   status: SettleStatus;
-  txHash?: Hex;
+  txHash?: TxRef;
   error?: string;
 }
 
-export interface PendingSettlement {
-  result: SettleResult;
-  signature: Hex;
-}
-
 interface PendingFile {
-  matchId: Hex;
-  players: Address[];
+  matchId: Hex32;
+  players: WalletId[];
   finalBalances: number[];
   ranks: number[];
-  inputLogHash: Hex;
-  replayHash: Hex;
+  inputLogHash: Hex32;
+  replayHash: Hex32;
   endedAt: string;
-  signature: Hex;
 }
 
 export interface SettlerOptions {
-  chain: ChainGateway;
-  account: LocalAccount;
-  arenaAddress: Address;
-  chainId: number;
+  chain: ArenaChain;
   pendingDir: string;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -71,62 +57,32 @@ export class Settler {
     this.log = options.log ?? (() => undefined);
   }
 
-  get signerAddress(): Address {
-    return this.options.account.address;
-  }
-
-  typedData(result: SettleResult) {
-    return {
-      domain: buildDomain(this.options.arenaAddress, this.options.chainId),
-      types: RESULT_TYPES,
-      primaryType: "Result",
-      message: result,
-    } as const;
-  }
-
-  localDigest(result: SettleResult): Hex {
-    return hashTypedData(this.typedData(result));
-  }
-
-  signResult(result: SettleResult): Promise<Hex> {
-    return this.options.account.signTypedData(this.typedData(result));
-  }
-
-  async selfCheck(sample: SettleResult): Promise<void> {
-    const onChain = await this.options.chain.hashResult(sample);
-    const local = this.localDigest(sample);
-    if (onChain.toLowerCase() !== local.toLowerCase()) {
-      throw new Error("EIP-712 digest mismatch between server and contract");
-    }
-  }
-
-  async persist(pending: PendingSettlement): Promise<void> {
+  async persist(result: ChainResult): Promise<void> {
     await mkdir(this.options.pendingDir, { recursive: true });
     const file: PendingFile = {
-      matchId: pending.result.matchId,
-      players: pending.result.players,
-      finalBalances: pending.result.finalBalances,
-      ranks: pending.result.ranks,
-      inputLogHash: pending.result.inputLogHash,
-      replayHash: pending.result.replayHash,
-      endedAt: pending.result.endedAt.toString(),
-      signature: pending.signature,
+      matchId: result.matchId,
+      players: result.players,
+      finalBalances: result.finalBalances,
+      ranks: result.ranks,
+      inputLogHash: result.inputLogHash,
+      replayHash: result.replayHash,
+      endedAt: result.endedAt.toString(),
     };
-    const target = this.pathFor(pending.result.matchId);
+    const target = this.pathFor(result.matchId);
     await writeFile(`${target}.tmp`, JSON.stringify(file), "utf8");
     await rename(`${target}.tmp`, target);
   }
 
   async submit(
-    pending: PendingSettlement,
+    result: ChainResult,
     onUpdate: (update: SettleUpdate) => void,
   ): Promise<SettleStatus> {
-    const matchId = pending.result.matchId;
+    const matchId = result.matchId;
     if (this.active.has(matchId)) return "submitted";
     this.active.add(matchId);
     try {
-      await this.persist(pending);
-      const status = await this.retryLoop(pending, onUpdate);
+      await this.persist(result);
+      const status = await this.retryLoop(result, onUpdate);
       if (status === "confirmed") {
         await this.remove(matchId);
       } else {
@@ -139,7 +95,7 @@ export class Settler {
   }
 
   async resumePending(
-    onUpdate: (matchId: Hex, update: SettleUpdate) => void,
+    onUpdate: (matchId: Hex32, update: SettleUpdate) => void,
   ): Promise<number> {
     let names: string[];
     try {
@@ -152,32 +108,28 @@ export class Settler {
       if (!name.endsWith(".json")) continue;
       const raw = await readFile(join(this.options.pendingDir, name), "utf8");
       const file = JSON.parse(raw) as PendingFile;
-      const pending: PendingSettlement = {
-        result: {
-          matchId: file.matchId,
-          players: file.players,
-          finalBalances: file.finalBalances,
-          ranks: file.ranks,
-          inputLogHash: file.inputLogHash,
-          replayHash: file.replayHash,
-          endedAt: BigInt(file.endedAt),
-        },
-        signature: file.signature,
+      const result: ChainResult = {
+        matchId: file.matchId,
+        players: file.players,
+        finalBalances: file.finalBalances,
+        ranks: file.ranks,
+        inputLogHash: file.inputLogHash,
+        replayHash: file.replayHash,
+        endedAt: BigInt(file.endedAt),
       };
       resumed += 1;
-      void this.submit(pending, (update) => onUpdate(file.matchId, update));
+      void this.submit(result, (update) => onUpdate(file.matchId, update));
     }
     return resumed;
   }
 
   private async retryLoop(
-    pending: PendingSettlement,
+    result: ChainResult,
     onUpdate: (update: SettleUpdate) => void,
   ): Promise<SettleStatus> {
-    const { result, signature } = pending;
     let delay = this.backoffMs;
     let lastError = "unknown";
-    let lastHash: Hex | undefined;
+    let lastHash: TxRef | undefined;
 
     for (;;) {
       let deadline: bigint | null = null;
@@ -210,14 +162,10 @@ export class Settler {
 
       if (deadline !== null) {
         try {
-          const hash = await this.options.chain.settle(
-            result,
-            signature,
-            (submitted) => {
-              lastHash = submitted;
-              onUpdate({ status: "submitted", txHash: submitted });
-            },
-          );
+          const hash = await this.options.chain.settle(result, (submitted) => {
+            lastHash = submitted;
+            onUpdate({ status: "submitted", txHash: submitted });
+          });
           onUpdate({ status: "confirmed", txHash: hash });
           return "confirmed";
         } catch (error) {
@@ -236,11 +184,11 @@ export class Settler {
     }
   }
 
-  private pathFor(matchId: Hex): string {
+  private pathFor(matchId: Hex32): string {
     return join(this.options.pendingDir, `${matchId}.json`);
   }
 
-  private async remove(matchId: Hex): Promise<void> {
+  private async remove(matchId: Hex32): Promise<void> {
     try {
       await unlink(this.pathFor(matchId));
     } catch {
@@ -248,7 +196,7 @@ export class Settler {
     }
   }
 
-  private async archiveFailed(matchId: Hex): Promise<void> {
+  private async archiveFailed(matchId: Hex32): Promise<void> {
     try {
       await rename(
         this.pathFor(matchId),

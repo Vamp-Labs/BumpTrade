@@ -1,20 +1,16 @@
 import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ChainResult } from "@bump/shared";
 import type { Address, Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import {
-  type ChainGateway,
+  type ArenaChain,
   MatchStatus,
   type OnChainMatch,
-  type SettleResult,
-} from "../src/chain/ChainGateway";
+} from "../src/chain/ArenaChain";
 import { Settler, type SettleUpdate } from "../src/chain/Settler";
 
-const KEY: Hex =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const ARENA: Address = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const PLAYERS: Address[] = [
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
@@ -22,7 +18,7 @@ const PLAYERS: Address[] = [
 const MATCH_ID: Hex = `0x${"aa".repeat(32)}`;
 const TX: Hex = `0x${"bb".repeat(32)}`;
 
-const result: SettleResult = {
+const result: ChainResult = {
   matchId: MATCH_ID,
   players: PLAYERS,
   finalBalances: [130, 70],
@@ -43,7 +39,11 @@ const view = (status: number, settleDeadline: bigint): OnChainMatch => ({
   pot: 2n,
 });
 
-class FakeChain implements ChainGateway {
+class FakeChain implements ArenaChain {
+  readonly id = "evm" as const;
+  readonly decimals = 18;
+  readonly relayerId = "relayer";
+  readonly signerId = "signer";
   status: number = MatchStatus.Started;
   deadline = 4_000_000_000n;
   failures = 0;
@@ -59,8 +59,7 @@ class FakeChain implements ChainGateway {
     return TX;
   }
   async settle(
-    _r: SettleResult,
-    _s: Hex,
+    _r: ChainResult,
     onSubmitted?: (hash: Hex) => void,
   ): Promise<Hex> {
     this.settleCalls += 1;
@@ -78,17 +77,14 @@ class FakeChain implements ChainGateway {
   async getPlayers(): Promise<Address[]> {
     return PLAYERS;
   }
-  async sessionKeyOf(): Promise<Address> {
+  async sessionKeyOf(): Promise<string | null> {
     return PLAYERS[0] as Address;
   }
   async vehicleOf(): Promise<number> {
     return 0;
   }
-  async hashResult(): Promise<Hex> {
-    return TX;
-  }
-  async joinWithSig(): Promise<Hex> {
-    return TX;
+  async signResult(): Promise<string> {
+    return "0x";
   }
   async claimRefund(): Promise<Hex> {
     return TX;
@@ -99,24 +95,27 @@ class FakeChain implements ChainGateway {
   async tokenBalanceOf(): Promise<bigint> {
     return 0n;
   }
-  async nextClaimAt(): Promise<bigint> {
-    return 0n;
+  async nextClaimAt(): Promise<number> {
+    return 0;
   }
   async relayerBalance(): Promise<bigint> {
     return 0n;
   }
-  async tokenAddress(): Promise<Address> {
-    return ARENA;
+  explorerTx(tx: string): string {
+    return tx;
+  }
+  parseWallet(raw: unknown): string | null {
+    return typeof raw === "string" ? raw : null;
+  }
+  walletKey(wallet: string): string {
+    return wallet.toLowerCase();
   }
 }
 
-const makeSettler = (chain: ChainGateway, dir: string, now?: () => number) => {
+const makeSettler = (chain: ArenaChain, dir: string, now?: () => number) => {
   const sleeps: number[] = [];
   const settler = new Settler({
     chain,
-    account: privateKeyToAccount(KEY),
-    arenaAddress: ARENA,
-    chainId: 46630,
     pendingDir: dir,
     sleep: async (ms) => {
       sleeps.push(ms);
@@ -134,10 +133,9 @@ describe("Settler", () => {
     const chain = new FakeChain();
     chain.failures = 3;
     const { settler, sleeps } = makeSettler(chain, dir);
-    const signature = await settler.signResult(result);
     const updates: SettleUpdate[] = [];
 
-    const status = await settler.submit({ result, signature }, (u) =>
+    const status = await settler.submit(result, (u) =>
       updates.push(u),
     );
 
@@ -156,8 +154,7 @@ describe("Settler", () => {
     const chain = new FakeChain();
     chain.status = MatchStatus.Settled;
     const { settler } = makeSettler(chain, dir);
-    const signature = await settler.signResult(result);
-    expect(await settler.submit({ result, signature }, () => undefined)).toBe(
+    expect(await settler.submit(result, () => undefined)).toBe(
       "confirmed",
     );
     expect(chain.settleCalls).toBe(0);
@@ -168,8 +165,7 @@ describe("Settler", () => {
     const chain = new FakeChain();
     chain.status = MatchStatus.Refunding;
     const { settler } = makeSettler(chain, dir);
-    const signature = await settler.signResult(result);
-    expect(await settler.submit({ result, signature }, () => undefined)).toBe(
+    expect(await settler.submit(result, () => undefined)).toBe(
       "failed",
     );
     expect(existsSync(join(dir, `${MATCH_ID}.failed`))).toBe(true);
@@ -182,7 +178,7 @@ describe("Settler", () => {
       () => 20_000,
     );
     expect(
-      await second.settler.submit({ result, signature }, () => undefined),
+      await second.settler.submit(result, () => undefined),
     ).toBe("failed");
     expect(late.settleCalls).toBe(0);
   });
@@ -190,8 +186,7 @@ describe("Settler", () => {
   it("re-submits a pending settlement after a restart", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bump-settle-"));
     const before = makeSettler(new FakeChain(), dir);
-    const signature = await before.settler.signResult(result);
-    await before.settler.persist({ result, signature });
+    await before.settler.persist(result);
     expect(readdirSync(dir)).toEqual([`${MATCH_ID}.json`]);
 
     const chain = new FakeChain();

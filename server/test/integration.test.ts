@@ -26,14 +26,10 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { robinhoodTestnet } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
-import {
-  type ChainGateway,
-  MatchStatus,
-  type SettleResult,
-} from "../src/chain/ChainGateway";
+import { type ArenaChain, MatchStatus } from "../src/chain/ArenaChain";
+import { EvmArenaChain, EvmJoinProtocol } from "../src/chain/evm";
 import { RefundKeeper } from "../src/chain/RefundKeeper";
 import { Settler } from "../src/chain/Settler";
-import { ViemChainGateway } from "../src/chain/ViemChainGateway";
 import type { ServerConfig } from "../src/config";
 import { Metrics } from "../src/metrics";
 import { Faucet } from "../src/relay/Faucet";
@@ -101,15 +97,18 @@ let token: Address;
 let app: ReturnType<typeof createApp> | null = null;
 
 const config = (): ServerConfig => ({
+  chain: "evm",
   port: SERVER_PORT,
-  rpcUrl: RPC,
-  wssUrl: null,
-  arenaAddress: arena,
-  signerPrivateKey: KEYS.signer,
-  relayerPrivateKey: KEYS.relayer,
+  evm: {
+    rpcUrl: RPC,
+    wssUrl: null,
+    arenaAddress: arena,
+    signerPrivateKey: KEYS.signer,
+    relayerPrivateKey: KEYS.relayer,
+    tokenAddress: token,
+  },
   stakeAmount: 100n * 10n ** 18n,
-  tokenAddress: token,
-  relayerMinBalanceWei: 2_000_000_000_000_000n,
+  relayerMinBalance: 2_000_000_000_000_000n,
   corsOrigins: ["http://localhost:5173"],
   limits: {
     faucetPerIpPerHour: 5,
@@ -126,55 +125,53 @@ const config = (): ServerConfig => ({
   serverBuild: "test",
 });
 
-class OutageGateway implements ChainGateway {
-  constructor(private readonly inner: ViemChainGateway) {}
-  openMatch: ChainGateway["openMatch"] = (p) => this.inner.openMatch(p);
-  startMatch: ChainGateway["startMatch"] = (m) => this.inner.startMatch(m);
-  cancel: ChainGateway["cancel"] = (m) => this.inner.cancel(m);
-  settle = async (_r: SettleResult): Promise<Hex> => {
+const outageOf = (inner: EvmArenaChain): ArenaChain => ({
+  id: inner.id,
+  decimals: inner.decimals,
+  relayerId: inner.relayerId,
+  signerId: inner.signerId,
+  openMatch: (p) => inner.openMatch(p),
+  startMatch: (m) => inner.startMatch(m),
+  cancel: (m) => inner.cancel(m),
+  settle: async () => {
     throw new Error("rpc outage");
-  };
-  getMatch: ChainGateway["getMatch"] = (m) => this.inner.getMatch(m);
-  getPlayers: ChainGateway["getPlayers"] = (m) => this.inner.getPlayers(m);
-  sessionKeyOf: ChainGateway["sessionKeyOf"] = (m, w) =>
-    this.inner.sessionKeyOf(m, w);
-  vehicleOf: ChainGateway["vehicleOf"] = (m, w) => this.inner.vehicleOf(m, w);
-  hashResult: ChainGateway["hashResult"] = (r) => this.inner.hashResult(r);
-  joinWithSig: ChainGateway["joinWithSig"] = (i, s) =>
-    this.inner.joinWithSig(i, s);
-  claimRefund: ChainGateway["claimRefund"] = (m, p) =>
-    this.inner.claimRefund(m, p);
-  faucetClaim: ChainGateway["faucetClaim"] = (w) => this.inner.faucetClaim(w);
-  tokenBalanceOf: ChainGateway["tokenBalanceOf"] = (w) =>
-    this.inner.tokenBalanceOf(w);
-  nextClaimAt: ChainGateway["nextClaimAt"] = (w) => this.inner.nextClaimAt(w);
-  relayerBalance: ChainGateway["relayerBalance"] = () =>
-    this.inner.relayerBalance();
-  tokenAddress: ChainGateway["tokenAddress"] = () => this.inner.tokenAddress();
-}
+  },
+  signResult: (r) => inner.signResult(r),
+  getMatch: (m) => inner.getMatch(m),
+  getPlayers: (m) => inner.getPlayers(m),
+  sessionKeyOf: (m, w) => inner.sessionKeyOf(m, w),
+  vehicleOf: (m, w) => inner.vehicleOf(m, w),
+  claimRefund: (m, p) => inner.claimRefund(m, p),
+  faucetClaim: (w) => inner.faucetClaim(w),
+  tokenBalanceOf: (w) => inner.tokenBalanceOf(w),
+  nextClaimAt: (w) => inner.nextClaimAt(w),
+  relayerBalance: () => inner.relayerBalance(),
+  explorerTx: (t) => inner.explorerTx(t),
+  parseWallet: (r) => inner.parseWallet(r),
+  walletKey: (w) => inner.walletKey(w),
+});
 
 const startApp = async (pendingDir: string, outage: boolean) => {
   const cfg = config();
-  const real = new ViemChainGateway({
+  const real = new EvmArenaChain({
     rpcUrl: RPC,
     wssUrl: null,
     arenaAddress: arena,
     tokenAddress: token,
     relayerPrivateKey: KEYS.relayer,
+    signerPrivateKey: KEYS.signer,
+    chainId: 46630,
     receiptTimeoutMs: 10_000,
   });
-  const chain: ChainGateway = outage ? new OutageGateway(real) : real;
+  const chain: ArenaChain = outage ? outageOf(real) : real;
   const settler = new Settler({
     chain,
-    account: privateKeyToAccount(KEYS.signer),
-    arenaAddress: arena,
-    chainId: 46630,
     pendingDir,
     sleep: outage ? () => new Promise<void>(() => undefined) : undefined,
     backoffMs: 200,
   });
   const log = () => undefined;
-  const guard = new RelayerGuard(chain, cfg.relayerMinBalanceWei, Date.now, 0);
+  const guard = new RelayerGuard(chain, cfg.relayerMinBalance, Date.now, 0);
   const context: RoomContext = {
     config: cfg,
     chain,
@@ -189,8 +186,7 @@ const startApp = async (pendingDir: string, outage: boolean) => {
       chain,
       guard,
       limits: cfg.limits,
-      arenaAddress: arena,
-      chainId: 46630,
+      protocol: new EvmJoinProtocol(real),
       now: Date.now,
       log,
     }),

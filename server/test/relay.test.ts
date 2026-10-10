@@ -7,15 +7,16 @@ import {
   type JoinIntentWire,
   toTypedJoinIntent,
 } from "@bump/shared";
-import type { Address, Hex } from "viem";
+import { type Address, getAddress, type Hex, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import {
-  type ChainGateway,
+  type ArenaChain,
+  type ChainResult,
   MatchStatus,
   type OnChainMatch,
-  type SettleResult,
-} from "../src/chain/ChainGateway";
+} from "../src/chain/ArenaChain";
+import { EvmJoinProtocol } from "../src/chain/evm";
 import { RefundKeeper } from "../src/chain/RefundKeeper";
 import type { LimitConfig } from "../src/config";
 import { Faucet } from "../src/relay/Faucet";
@@ -58,13 +59,19 @@ const view = (over: Partial<OnChainMatch> = {}): OnChainMatch => ({
   ...over,
 });
 
-class FakeChain implements ChainGateway {
+class FakeChain implements ArenaChain {
+  readonly id = "evm" as const;
+  readonly decimals = 18;
+  readonly relayerId = "relayer";
+  readonly signerId = "signer";
+  readonly arenaAddress: Address = ARENA;
+  readonly evmChainId = 46630;
   match = view();
   balance = 1000n * ETH;
   relayer = ETH;
-  next = 0n;
+  next = 0;
   joined: Address[] = [];
-  sessionKey: Address = "0x0000000000000000000000000000000000000000";
+  sessionKey: Address | null = null;
   joinCalls = 0;
   claimCalls = 0;
   joinGate: Promise<void> | null = null;
@@ -82,7 +89,7 @@ class FakeChain implements ChainGateway {
     this.cancelCalls += 1;
     return TX;
   }
-  async settle(_r: SettleResult): Promise<Hex> {
+  async settle(_r: ChainResult): Promise<Hex> {
     return TX;
   }
   async getMatch(): Promise<OnChainMatch> {
@@ -91,14 +98,14 @@ class FakeChain implements ChainGateway {
   async getPlayers(): Promise<Address[]> {
     return this.joined;
   }
-  async sessionKeyOf(): Promise<Address> {
+  async sessionKeyOf(): Promise<Address | null> {
     return this.sessionKey;
   }
   async vehicleOf(): Promise<number> {
     return 0;
   }
-  async hashResult(): Promise<Hex> {
-    return TX;
+  async signResult(): Promise<string> {
+    return "0x";
   }
   async joinWithSig(): Promise<Hex> {
     this.joinCalls += 1;
@@ -113,20 +120,26 @@ class FakeChain implements ChainGateway {
   }
   async faucetClaim(): Promise<Hex> {
     this.claimCalls += 1;
-    this.next = BigInt(NOW_MS / 1000 + 86400);
+    this.next = NOW_MS / 1000 + 86400;
     return TX;
   }
   async tokenBalanceOf(): Promise<bigint> {
     return this.balance;
   }
-  async nextClaimAt(): Promise<bigint> {
+  async nextClaimAt(): Promise<number> {
     return this.next;
   }
   async relayerBalance(): Promise<bigint> {
     return this.relayer;
   }
-  async tokenAddress(): Promise<Address> {
-    return ARENA;
+  explorerTx(tx: string): string {
+    return tx;
+  }
+  parseWallet(raw: unknown): string | null {
+    return typeof raw === "string" && isAddress(raw) ? getAddress(raw) : null;
+  }
+  walletKey(wallet: string): string {
+    return wallet.toLowerCase();
   }
 }
 
@@ -146,8 +159,7 @@ const setup = (over: Partial<LimitConfig> = {}) => {
     chain,
     guard,
     limits: limits(over),
-    arenaAddress: ARENA,
-    chainId: 46630,
+    protocol: new EvmJoinProtocol(chain),
     now,
     log,
   });
@@ -219,7 +231,7 @@ describe("join relay", () => {
       chain,
       guard: new RelayerGuard(chain, 1n, () => NOW_MS, 0),
       limits: limits(),
-      arenaAddress: ARENA,
+      protocol: new EvmJoinProtocol(chain),
       now: () => (Number(vector.message.deadline) + 1) * 1000,
       log: () => undefined,
     });
@@ -253,7 +265,7 @@ describe("join relay", () => {
     expect(await relay.submit(goodMessage(), MATCH_ID, "a")).toMatchObject({
       code: "ALREADY_JOINED",
     });
-    chain.sessionKey = "0x0000000000000000000000000000000000000000";
+    chain.sessionKey = null;
     chain.balance = 99n * ETH;
     expect(await relay.submit(goodMessage(), MATCH_ID, "a")).toMatchObject({
       code: "INSUFFICIENT_BALANCE",
@@ -327,7 +339,7 @@ describe("faucet", () => {
     expect((await faucet.claim("nope", "a")).body).toMatchObject({
       code: "INVALID_ADDRESS",
     });
-    chain.next = BigInt(NOW_MS / 1000 + 600);
+    chain.next = NOW_MS / 1000 + 600;
     const res = await faucet.claim(wallet, "a");
     expect(res.status).toBe(429);
     expect(res.body).toMatchObject({
@@ -340,7 +352,7 @@ describe("faucet", () => {
 
   it("limits calls per IP per hour", async () => {
     const { faucet, chain } = setup({ faucetPerIpPerHour: 5 });
-    chain.next = BigInt(NOW_MS / 1000 + 600);
+    chain.next = NOW_MS / 1000 + 600;
     for (let i = 0; i < 5; i++) {
       expect((await faucet.claim(wallet, "ip")).body).toMatchObject({
         code: "COOLDOWN",
@@ -357,10 +369,10 @@ describe("faucet", () => {
   it("enforces the global hourly ceiling", async () => {
     const { faucet, chain } = setup({ faucetGlobalPerHour: 2 });
     for (let i = 0; i < 2; i++) {
-      chain.next = 0n;
+      chain.next = 0;
       expect((await faucet.claim(wallet, `ip${i}`)).status).toBe(200);
     }
-    chain.next = 0n;
+    chain.next = 0;
     const res = await faucet.claim(wallet, "ip9");
     expect(res.status).toBe(429);
     expect(res.body).toMatchObject({ code: "GLOBAL_LIMIT" });
@@ -378,7 +390,7 @@ describe("faucet", () => {
 
   it("reports balance and nextClaimAt", async () => {
     const { faucet, chain } = setup();
-    chain.next = BigInt(NOW_MS / 1000 + 60);
+    chain.next = NOW_MS / 1000 + 60;
     const res = await faucet.status(wallet);
     expect(res).toMatchObject({
       status: 200,

@@ -1,4 +1,4 @@
-export * from "./ChainGateway";
+export * from "./ArenaChain";
 export * from "./RefundKeeper";
 export * from "./Settler";
-export * from "./ViemChainGateway";
+export * from "./seatProof";

@@ -20,6 +20,7 @@ import {
   PATCH_RATE_MS,
   Phase,
   PowerUpKind,
+  type SeatScheme,
   type ServerEvent,
   type SettlementStatus,
   type SimEvent,
@@ -27,24 +28,19 @@ import {
   seatMessage,
   secondsToTicks,
   TICK_HZ,
+  type Hex32,
   type VehicleInput,
+  type WalletId,
 } from "@bump/shared";
 import { type Client, Room } from "colyseus";
-import {
-  type Address,
-  getAddress,
-  type Hex,
-  keccak256,
-  recoverMessageAddress,
-  toBytes,
-} from "viem";
-import { MatchStatus, type SettleResult } from "../chain/ChainGateway";
+import { type Hex, keccak256, toBytes } from "viem";
+import { type ChainResult, MatchStatus } from "../chain/ArenaChain";
+import { sameSessionKey, verifySeatProof } from "../chain/seatProof";
 import { InputLog, type SeatInput } from "../log/InputLog";
 import { RoomMetrics } from "../metrics";
 import { getRoomContext, type RoomContext } from "./context";
 
-const ZERO_HASH: Hex = `0x${"0".repeat(64)}`;
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const ZERO_HASH: Hex32 = `0x${"0".repeat(64)}`;
 const FRESHNESS_MS = 60_000;
 const SESSION_KEY_ATTEMPTS = 8;
 const LOBBY_LINGER_MS = 5_000;
@@ -58,23 +54,42 @@ const isHexString = (value: unknown, length?: number): value is Hex =>
   /^0x[0-9a-fA-F]*$/.test(value) &&
   (length === undefined || value.length === length);
 
-const parseClaim = (message: unknown): ClaimSeatMessage | null => {
+const isText = (value: unknown, max: number): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= max;
+
+const parseClaim = (
+  message: unknown,
+): (ClaimSeatMessage & { scheme: SeatScheme }) | null => {
   if (typeof message !== "object" || message === null) return null;
   const m = message as Record<string, unknown>;
-  if (
-    !isHexString(m.wallet, 42) ||
-    !isHexString(m.sessionKey, 42) ||
-    !isHexString(m.signature)
-  ) {
-    return null;
-  }
+  const scheme = m.scheme ?? "evm";
   if (typeof m.issuedAt !== "number" || !Number.isFinite(m.issuedAt))
     return null;
+  if (scheme === "evm") {
+    if (
+      !isHexString(m.wallet, 42) ||
+      !isHexString(m.sessionKey, 42) ||
+      !isHexString(m.signature)
+    ) {
+      return null;
+    }
+  } else if (scheme === "ed25519") {
+    if (
+      !isText(m.wallet, 64) ||
+      !isText(m.sessionKey, 64) ||
+      !isText(m.signature, 128)
+    ) {
+      return null;
+    }
+  } else {
+    return null;
+  }
   return {
-    wallet: m.wallet as Address,
-    sessionKey: m.sessionKey as Address,
+    wallet: m.wallet,
+    sessionKey: m.sessionKey,
     issuedAt: m.issuedAt,
     signature: m.signature,
+    scheme,
   };
 };
 
@@ -94,7 +109,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
   });
 
   private ctx!: RoomContext;
-  private matchId: Hex = ZERO_HASH;
+  private matchId: Hex32 = ZERO_HASH;
   private seed: Hex = ZERO_HASH;
   private busy = false;
   private joinsInFlight = 0;
@@ -106,7 +121,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     { seat: number; vehicle: number }
   >();
   private readonly usedSignatures = new Set<string>();
-  private chainPlayers: Address[] = [];
+  private chainPlayers: WalletId[] = [];
   private walletBySeat: string[] = [];
   private sim: MatchSim | null = null;
   private inputLog: InputLog | null = null;
@@ -238,7 +253,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
 
   private announceSettlement(
     status: SettlementStatus,
-    txHash?: Hex,
+    txHash?: string,
     error?: string,
   ): void {
     const event: ServerEvent = {
@@ -310,13 +325,20 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       this.sendError(client, "STALE_AUTH", "claim is too old");
       return;
     }
-    const signatureKey = claim.signature.toLowerCase();
+    const expectedScheme: SeatScheme =
+      this.ctx.chain.id === "evm" ? "evm" : "ed25519";
+    if (claim.scheme !== expectedScheme) {
+      this.sendError(client, "SEAT_REJECTED", "unsupported seat scheme");
+      return;
+    }
+    const signatureKey =
+      claim.scheme === "evm" ? claim.signature.toLowerCase() : claim.signature;
     if (this.usedSignatures.has(signatureKey)) {
       this.sendError(client, "STALE_AUTH", "signature already used");
       return;
     }
 
-    const wallet = claim.wallet.toLowerCase();
+    const wallet = this.ctx.chain.walletKey(claim.wallet);
     const alreadySeated = this.claimed.has(wallet);
     if (!alreadySeated && this.claimed.size >= this.ctx.config.maxPlayers) {
       this.sendError(client, "ROOM_FULL", "all seats are claimed");
@@ -324,7 +346,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     }
 
     try {
-      const recovered = await recoverMessageAddress({
+      const proven = await verifySeatProof(claim.scheme, {
         message: seatMessage({
           matchId: this.matchId,
           wallet: claim.wallet,
@@ -332,8 +354,9 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
           issuedAt: claim.issuedAt,
         }),
         signature: claim.signature,
+        sessionKey: claim.sessionKey,
       });
-      if (recovered.toLowerCase() !== claim.sessionKey.toLowerCase()) {
+      if (!proven) {
         this.sendError(
           client,
           "SEAT_REJECTED",
@@ -343,7 +366,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       }
 
       const onChainKey = await this.readSessionKey(claim.wallet);
-      if (onChainKey.toLowerCase() === ZERO_ADDRESS) {
+      if (onChainKey === null) {
         this.sendError(
           client,
           "NOT_JOINED",
@@ -351,7 +374,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
         );
         return;
       }
-      if (onChainKey.toLowerCase() !== recovered.toLowerCase()) {
+      if (!sameSessionKey(claim.scheme, onChainKey, claim.sessionKey)) {
         this.sendError(
           client,
           "SEAT_REJECTED",
@@ -362,7 +385,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
 
       const players = await this.ctx.chain.getPlayers(this.matchId);
       const seat = players.findIndex(
-        (player) => player.toLowerCase() === wallet,
+        (player) => this.ctx.chain.walletKey(player) === wallet,
       );
       if (seat < 0) {
         this.sendError(
@@ -389,11 +412,11 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     }
   }
 
-  private async readSessionKey(wallet: Address): Promise<Address> {
-    let key: Address = ZERO_ADDRESS;
+  private async readSessionKey(wallet: WalletId): Promise<string | null> {
+    let key: string | null = null;
     for (let attempt = 0; attempt < SESSION_KEY_ATTEMPTS; attempt++) {
       key = await this.ctx.chain.sessionKeyOf(this.matchId, wallet);
-      if (key.toLowerCase() !== ZERO_ADDRESS) return key;
+      if (key !== null) return key;
       await new Promise((resolve) =>
         setTimeout(resolve, this.ctx.receiptRetryDelayMs),
       );
@@ -424,7 +447,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     if (isNew) {
       this.broadcastEvent({
         t: "seat",
-        wallet: wallet as Address,
+        wallet,
         seat,
         vehicle,
       });
@@ -438,7 +461,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     } else {
       this.sendEvent(client, {
         t: "seat",
-        wallet: wallet as Address,
+        wallet,
         seat,
         vehicle,
       });
@@ -548,10 +571,10 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     );
     this.chainPlayers = players;
     this.vehicleIds = vehicles;
-    this.walletBySeat = players.map((player) => player.toLowerCase());
+    this.walletBySeat = players.map((player) => chain.walletKey(player));
 
     players.forEach((player, seat) => {
-      const wallet = player.toLowerCase();
+      const wallet = chain.walletKey(player);
       const vehicle = vehicles[seat] ?? 0;
       if (!this.state.cars.has(wallet)) {
         this.state.cars.set(wallet, this.makeCar(wallet, seat, vehicle, false));
@@ -810,11 +833,11 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
   private async finishMatch(sim: MatchSim, log: InputLog): Promise<void> {
     this.setPhase(Phase.ENDED);
     const outcome = sim.outcome();
-    const { config, settler } = this.ctx;
+    const { config, chain, settler } = this.ctx;
 
-    const result: SettleResult = {
+    const result: ChainResult = {
       matchId: this.matchId,
-      players: this.chainPlayers.map((player) => getAddress(player)),
+      players: this.chainPlayers,
       finalBalances: outcome.finalBalances,
       ranks: outcome.ranks,
       inputLogHash: log.hash(),
@@ -822,7 +845,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       endedAt: BigInt(Math.floor(this.ctx.now() / 1000)),
     };
     this.endedAtMs = this.ctx.now();
-    const signature = await settler.signResult(result);
+    const signature = await chain.signResult(result);
     const payouts = computePayouts(
       config.stakeAmount,
       config.startBalance,
@@ -853,7 +876,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
       reason: sim.endReason,
     });
 
-    const status = await settler.submit({ result, signature }, (update) => {
+    const status = await settler.submit(result, (update) => {
       this.announceSettlement(update.status, update.txHash, update.error);
       if (update.status === "confirmed") {
         void this.ctx.keeper.forget(this.matchId);

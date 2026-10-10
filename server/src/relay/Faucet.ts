@@ -4,8 +4,7 @@ import type {
   FaucetStatus,
   FaucetSuccess,
 } from "@bump/shared";
-import { type Address, getAddress, type Hex, isAddress } from "viem";
-import type { ChainGateway } from "../chain/ChainGateway";
+import type { ArenaChain } from "../chain/ArenaChain";
 import type { LimitConfig } from "../config";
 import { RateLimiter } from "./RateLimiter";
 import type { RelayerGuard } from "./RelayerGuard";
@@ -21,7 +20,7 @@ export type FaucetStatusResponse =
   | { status: number; body: FaucetError };
 
 export interface FaucetOptions {
-  chain: ChainGateway;
+  chain: ArenaChain;
   guard: RelayerGuard;
   limits: LimitConfig;
   now: () => number;
@@ -59,11 +58,11 @@ export class Faucet {
 
   async claim(rawWallet: unknown, ip: string): Promise<FaucetResponse> {
     const { chain, guard, now, log } = this.options;
-    if (typeof rawWallet !== "string" || !isAddress(rawWallet)) {
+    const wallet = chain.parseWallet(rawWallet);
+    if (wallet === null) {
       return fail(400, "INVALID_ADDRESS", "wallet is not a valid address");
     }
-    const wallet = getAddress(rawWallet);
-    const key = wallet.toLowerCase();
+    const key = chain.walletKey(wallet);
 
     const ipWait = this.perIp.tryConsume(ip);
     if (ipWait > 0) {
@@ -74,7 +73,7 @@ export class Faucet {
     }
     this.inFlight.add(key);
     try {
-      let next: bigint;
+      let next: number;
       try {
         next = await chain.nextClaimAt(wallet);
         if (await guard.isLow()) {
@@ -91,13 +90,13 @@ export class Faucet {
       }
 
       const nowS = Math.floor(now() / 1000);
-      if (next > BigInt(nowS)) {
+      if (next > nowS) {
         return fail(
           429,
           "COOLDOWN",
           "this wallet already claimed today",
-          Number(next) - nowS,
-          Number(next),
+          next - nowS,
+          next,
         );
       }
 
@@ -111,7 +110,7 @@ export class Faucet {
         );
       }
 
-      let txHash: Hex;
+      let txHash: string;
       try {
         txHash = await chain.faucetClaim(wallet);
         guard.invalidate();
@@ -125,7 +124,7 @@ export class Faucet {
       }
       let nextClaimAt = 0;
       try {
-        nextClaimAt = Number(await chain.nextClaimAt(wallet));
+        nextClaimAt = await chain.nextClaimAt(wallet);
       } catch {
         nextClaimAt = nowS + 24 * 3600;
       }
@@ -137,23 +136,24 @@ export class Faucet {
   }
 
   async status(rawWallet: unknown): Promise<FaucetStatusResponse> {
-    if (typeof rawWallet !== "string" || !isAddress(rawWallet)) {
+    const { chain } = this.options;
+    const wallet = chain.parseWallet(rawWallet);
+    if (wallet === null) {
       return fail(400, "INVALID_ADDRESS", "wallet is not a valid address");
     }
-    const wallet: Address = getAddress(rawWallet);
     try {
       const [balance, next] = await Promise.all([
-        this.options.chain.tokenBalanceOf(wallet),
-        this.options.chain.nextClaimAt(wallet),
+        chain.tokenBalanceOf(wallet),
+        chain.nextClaimAt(wallet),
       ]);
       const nowS = Math.floor(this.options.now() / 1000);
       return {
         status: 200,
         body: {
-          wallet: wallet.toLowerCase() as Address,
+          wallet: chain.walletKey(wallet),
           balance: balance.toString(),
-          nextClaimAt: Number(next),
-          canClaimNow: next <= BigInt(nowS),
+          nextClaimAt: next,
+          canClaimNow: next <= nowS,
         },
       };
     } catch (error) {

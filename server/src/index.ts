@@ -1,10 +1,8 @@
 import { join } from "node:path";
-import { privateKeyToAccount } from "viem/accounts";
-import { robinhoodTestnet } from "viem/chains";
 import { createApp } from "./app";
+import { createChain } from "./chain/createChain";
 import { RefundKeeper } from "./chain/RefundKeeper";
 import { Settler } from "./chain/Settler";
-import { ViemChainGateway } from "./chain/ViemChainGateway";
 import { loadConfig } from "./config";
 import { Metrics } from "./metrics";
 import { Faucet } from "./relay/Faucet";
@@ -18,25 +16,16 @@ const log = (line: Record<string, unknown>): void => {
 const main = async (): Promise<void> => {
   const config = loadConfig(process.env);
 
-  const chain = new ViemChainGateway({
-    rpcUrl: config.rpcUrl,
-    wssUrl: config.wssUrl,
-    arenaAddress: config.arenaAddress,
-    tokenAddress: config.tokenAddress,
-    relayerPrivateKey: config.relayerPrivateKey,
-  });
+  const { chain, joinProtocol } = createChain(config);
   const settler = new Settler({
     chain,
-    account: privateKeyToAccount(config.signerPrivateKey),
-    arenaAddress: config.arenaAddress,
-    chainId: robinhoodTestnet.id,
     pendingDir: join(config.replayDir, "pending"),
     log,
   });
 
   const sample = {
     matchId: `0x${"11".repeat(32)}` as const,
-    players: [privateKeyToAccount(config.signerPrivateKey).address],
+    players: [chain.signerId],
     finalBalances: [config.startBalance],
     ranks: [1],
     inputLogHash: `0x${"00".repeat(32)}` as const,
@@ -44,7 +33,7 @@ const main = async (): Promise<void> => {
     endedAt: 1n,
   };
   try {
-    await settler.selfCheck(sample);
+    await chain.selfCheck?.(sample);
   } catch (error) {
     if (error instanceof Error && error.message.includes("digest mismatch"))
       throw error;
@@ -60,13 +49,12 @@ const main = async (): Promise<void> => {
   });
 
   const stats = { rooms: 0 };
-  const guard = new RelayerGuard(chain, config.relayerMinBalanceWei, Date.now);
+  const guard = new RelayerGuard(chain, config.relayerMinBalance, Date.now);
   const joinRelay = new JoinRelay({
     chain,
     guard,
     limits: config.limits,
-    arenaAddress: config.arenaAddress,
-    chainId: robinhoodTestnet.id,
+    protocol: joinProtocol,
     now: Date.now,
     log,
   });
@@ -108,9 +96,10 @@ const main = async (): Promise<void> => {
   log({
     evt: "listening",
     port: config.port,
-    arena: config.arenaAddress,
-    relayer: chain.relayerAddress,
-    signer: settler.signerAddress,
+    chain: chain.id,
+    arena: config.evm?.arenaAddress,
+    relayer: chain.relayerId,
+    signer: chain.signerId,
     resumedSettlements: resumed,
   });
 };

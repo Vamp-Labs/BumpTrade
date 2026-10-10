@@ -1,5 +1,12 @@
 import { bumpArenaAbi, mockBumpAbi } from "@bump/contracts";
-import type { JoinIntentTyped } from "@bump/shared";
+import {
+  buildDomain,
+  type ChainResult,
+  type Hex32,
+  type JoinIntentTyped,
+  RESULT_TYPES,
+  type WalletId,
+} from "@bump/shared";
 import {
   type Account,
   type Address,
@@ -7,8 +14,12 @@ import {
   createPublicClient,
   createWalletClient,
   fallback,
+  getAddress,
   type Hex,
+  hashTypedData,
   http,
+  isAddress,
+  type LocalAccount,
   nonceManager,
   type PublicClient,
   type Transport,
@@ -17,38 +28,48 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { robinhoodTestnet } from "viem/chains";
-import { PUBLIC_RPC_URL } from "../config";
+import { PUBLIC_RPC_URL } from "../../config";
 import type {
-  ChainGateway,
+  ArenaChain,
   OnChainMatch,
   OpenMatchParams,
-  SettleResult,
-} from "./ChainGateway";
+} from "../ArenaChain";
 
-export interface ViemGatewayOptions {
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const EXPLORER_URL = "https://explorer.testnet.chain.robinhood.com";
+
+export interface EvmArenaChainOptions {
   rpcUrl: string;
   wssUrl: string | null;
   arenaAddress: Address;
   tokenAddress?: Address | null;
   relayerPrivateKey: Hex;
+  signerPrivateKey: Hex;
+  chainId?: number;
   receiptTimeoutMs?: number;
 }
 
 const isLocalUrl = (url: string): boolean =>
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(url);
 
-export class ViemChainGateway implements ChainGateway {
+export class EvmArenaChain implements ArenaChain {
+  readonly id = "evm" as const;
+  readonly decimals = 18;
   private readonly publicClient: PublicClient<Transport, Chain>;
   private readonly walletClient: WalletClient<Transport, Chain, Account>;
   private readonly account: Account;
+  private readonly signer: LocalAccount;
   private readonly arena: Address;
+  private readonly chainId: number;
   private readonly receiptTimeoutMs: number;
   private token: Address | null;
   private readonly sessionKeys = new Map<string, Address>();
   private readonly vehicles = new Map<string, number>();
 
-  constructor(options: ViemGatewayOptions) {
+  constructor(options: EvmArenaChainOptions) {
     this.arena = options.arenaAddress;
+    this.chainId = options.chainId ?? robinhoodTestnet.id;
+    this.signer = privateKeyToAccount(options.signerPrivateKey);
     this.token = options.tokenAddress ?? null;
     this.receiptTimeoutMs = options.receiptTimeoutMs ?? 15_000;
     this.account = privateKeyToAccount(options.relayerPrivateKey, {
@@ -77,8 +98,32 @@ export class ViemChainGateway implements ChainGateway {
     });
   }
 
-  get relayerAddress(): Address {
+  get relayerId(): string {
     return this.account.address;
+  }
+
+  get signerId(): string {
+    return this.signer.address;
+  }
+
+  get arenaAddress(): Address {
+    return this.arena;
+  }
+
+  get evmChainId(): number {
+    return this.chainId;
+  }
+
+  explorerTx(tx: string): string {
+    return `${EXPLORER_URL}/tx/${tx}`;
+  }
+
+  parseWallet(raw: unknown): WalletId | null {
+    return typeof raw === "string" && isAddress(raw) ? getAddress(raw) : null;
+  }
+
+  walletKey(wallet: WalletId): string {
+    return wallet.toLowerCase();
   }
 
   private async send(
@@ -132,7 +177,7 @@ export class ViemChainGateway implements ChainGateway {
     );
   }
 
-  startMatch(matchId: Hex): Promise<Hex> {
+  startMatch(matchId: Hex32): Promise<Hex> {
     return this.send(() =>
       this.walletClient.writeContract({
         address: this.arena,
@@ -143,7 +188,7 @@ export class ViemChainGateway implements ChainGateway {
     );
   }
 
-  cancel(matchId: Hex): Promise<Hex> {
+  cancel(matchId: Hex32): Promise<Hex> {
     return this.send(() =>
       this.walletClient.writeContract({
         address: this.arena,
@@ -154,11 +199,11 @@ export class ViemChainGateway implements ChainGateway {
     );
   }
 
-  settle(
-    result: SettleResult,
-    signature: Hex,
+  async settle(
+    result: ChainResult,
     onSubmitted?: (hash: Hex) => void,
   ): Promise<Hex> {
+    const signature = await this.signResult(result);
     return this.send(
       () =>
         this.walletClient.writeContract({
@@ -171,7 +216,32 @@ export class ViemChainGateway implements ChainGateway {
     );
   }
 
-  async getMatch(matchId: Hex): Promise<OnChainMatch> {
+  private typedData(result: ChainResult) {
+    return {
+      domain: buildDomain(this.arena, this.chainId),
+      types: RESULT_TYPES,
+      primaryType: "Result",
+      message: toContractResult(result),
+    } as const;
+  }
+
+  localDigest(result: ChainResult): Hex {
+    return hashTypedData(this.typedData(result));
+  }
+
+  signResult(result: ChainResult): Promise<Hex> {
+    return this.signer.signTypedData(this.typedData(result));
+  }
+
+  async selfCheck(sample: ChainResult): Promise<void> {
+    const onChain = await this.hashResult(sample);
+    const local = this.localDigest(sample);
+    if (onChain.toLowerCase() !== local.toLowerCase()) {
+      throw new Error("EIP-712 digest mismatch between server and contract");
+    }
+  }
+
+  async getMatch(matchId: Hex32): Promise<OnChainMatch> {
     const view = await this.publicClient.readContract({
       address: this.arena,
       abi: bumpArenaAbi,
@@ -191,7 +261,7 @@ export class ViemChainGateway implements ChainGateway {
     };
   }
 
-  async getPlayers(matchId: Hex): Promise<Address[]> {
+  async getPlayers(matchId: Hex32): Promise<Address[]> {
     const players = await this.publicClient.readContract({
       address: this.arena,
       abi: bumpArenaAbi,
@@ -202,7 +272,7 @@ export class ViemChainGateway implements ChainGateway {
     return [...players];
   }
 
-  async sessionKeyOf(matchId: Hex, wallet: Address): Promise<Address> {
+  async sessionKeyOf(matchId: Hex32, wallet: WalletId): Promise<Address | null> {
     const key = `${matchId}:${wallet.toLowerCase()}`;
     const cached = this.sessionKeys.get(key);
     if (cached) return cached;
@@ -210,16 +280,15 @@ export class ViemChainGateway implements ChainGateway {
       address: this.arena,
       abi: bumpArenaAbi,
       functionName: "sessionKeyOf",
-      args: [matchId, wallet],
+      args: [matchId, wallet as Address],
       blockTag: "latest",
     });
-    if (sessionKey !== "0x0000000000000000000000000000000000000000") {
-      this.sessionKeys.set(key, sessionKey);
-    }
+    if (sessionKey === ZERO_ADDRESS) return null;
+    this.sessionKeys.set(key, sessionKey);
     return sessionKey;
   }
 
-  async vehicleOf(matchId: Hex, wallet: Address): Promise<number> {
+  async vehicleOf(matchId: Hex32, wallet: WalletId): Promise<number> {
     const key = `${matchId}:${wallet.toLowerCase()}`;
     const cached = this.vehicles.get(key);
     if (cached !== undefined) return cached;
@@ -228,7 +297,7 @@ export class ViemChainGateway implements ChainGateway {
         address: this.arena,
         abi: bumpArenaAbi,
         functionName: "vehicleOf",
-        args: [matchId, wallet],
+        args: [matchId, wallet as Address],
         blockTag: "latest",
       }),
     );
@@ -259,49 +328,50 @@ export class ViemChainGateway implements ChainGateway {
     );
   }
 
-  claimRefund(matchId: Hex, player: Address): Promise<Hex> {
+  claimRefund(matchId: Hex32, player: WalletId): Promise<Hex> {
     return this.send(() =>
       this.walletClient.writeContract({
         address: this.arena,
         abi: bumpArenaAbi,
         functionName: "claimRefund",
-        args: [matchId, player],
+        args: [matchId, player as Address],
       }),
     );
   }
 
-  async faucetClaim(wallet: Address): Promise<Hex> {
+  async faucetClaim(wallet: WalletId): Promise<Hex> {
     const address = await this.tokenAddress();
     return this.send(() =>
       this.walletClient.writeContract({
         address,
         abi: mockBumpAbi,
         functionName: "claim",
-        args: [wallet],
+        args: [wallet as Address],
       }),
     );
   }
 
-  async tokenBalanceOf(wallet: Address): Promise<bigint> {
+  async tokenBalanceOf(wallet: WalletId): Promise<bigint> {
     const address = await this.tokenAddress();
     return this.publicClient.readContract({
       address,
       abi: mockBumpAbi,
       functionName: "balanceOf",
-      args: [wallet],
+      args: [wallet as Address],
       blockTag: "latest",
     });
   }
 
-  async nextClaimAt(wallet: Address): Promise<bigint> {
+  async nextClaimAt(wallet: WalletId): Promise<number> {
     const address = await this.tokenAddress();
-    return this.publicClient.readContract({
+    const next = await this.publicClient.readContract({
       address,
       abi: mockBumpAbi,
       functionName: "nextClaimAt",
-      args: [wallet],
+      args: [wallet as Address],
       blockTag: "latest",
     });
+    return Number(next);
   }
 
   relayerBalance(): Promise<bigint> {
@@ -311,7 +381,7 @@ export class ViemChainGateway implements ChainGateway {
     });
   }
 
-  hashResult(result: SettleResult): Promise<Hex> {
+  hashResult(result: ChainResult): Promise<Hex> {
     return this.publicClient.readContract({
       address: this.arena,
       abi: bumpArenaAbi,
@@ -322,9 +392,9 @@ export class ViemChainGateway implements ChainGateway {
   }
 }
 
-const toContractResult = (result: SettleResult) => ({
+const toContractResult = (result: ChainResult) => ({
   matchId: result.matchId,
-  players: result.players,
+  players: result.players.map((player) => getAddress(player)),
   finalBalances: result.finalBalances,
   ranks: result.ranks,
   inputLogHash: result.inputLogHash,

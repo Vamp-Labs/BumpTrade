@@ -1,18 +1,24 @@
+import type { ChainId } from "@bump/shared";
 import type { Address } from "viem";
 import { isAddress } from "viem";
 
 export const PUBLIC_RPC_URL = "https://rpc.testnet.chain.robinhood.com";
 
-export interface ServerConfig {
-  port: number;
+export interface EvmChainConfig {
   rpcUrl: string;
   wssUrl: string | null;
   arenaAddress: Address;
   signerPrivateKey: `0x${string}`;
   relayerPrivateKey: `0x${string}`;
-  stakeAmount: bigint;
   tokenAddress: Address | null;
-  relayerMinBalanceWei: bigint;
+}
+
+export interface ServerConfig {
+  chain: ChainId;
+  port: number;
+  evm: EvmChainConfig | null;
+  stakeAmount: bigint;
+  relayerMinBalance: bigint;
   corsOrigins: string[];
   limits: LimitConfig;
   startBalance: number;
@@ -81,7 +87,21 @@ const readKey = (env: Env, name: string): `0x${string}` => {
   return prefixed as `0x${string}`;
 };
 
+const readChain = (env: Env): ChainId => {
+  const raw = env.CHAIN === undefined || env.CHAIN === "" ? "solana" : env.CHAIN;
+  if (raw !== "evm" && raw !== "solana") {
+    throw new Error('CHAIN must be "evm" or "solana"');
+  }
+  return raw;
+};
+
 export const loadConfig = (env: Env): ServerConfig => {
+  const chain = readChain(env);
+  if (chain === "solana") {
+    throw new Error(
+      "CHAIN=solana is not available yet: the Solana adapter lands in phase B. Set CHAIN=evm to run the Robinhood Chain server.",
+    );
+  }
   const missing = CHAIN_VARIABLES.filter((name) => !env[name]);
   if (missing.length > 0) {
     throw new Error(
@@ -99,7 +119,7 @@ export const loadConfig = (env: Env): ServerConfig => {
 
   const stakeAmount = readBigInt(env, "STAKE_AMOUNT", "100000000000000000000");
   if (stakeAmount <= 0n) throw new Error("STAKE_AMOUNT must be positive");
-  const relayerMinBalanceWei = readBigInt(
+  const relayerMinBalance = readBigInt(
     env,
     "RELAYER_MIN_BALANCE_WEI",
     "2000000000000000",
@@ -111,16 +131,21 @@ export const loadConfig = (env: Env): ServerConfig => {
   }
 
   return {
+    chain,
     port: readInt(env, "PORT", 2567, 1, 65535),
-    rpcUrl:
-      env.RH_RPC_URL && env.RH_RPC_URL !== "" ? env.RH_RPC_URL : PUBLIC_RPC_URL,
-    wssUrl: env.RH_WSS_URL && env.RH_WSS_URL !== "" ? env.RH_WSS_URL : null,
-    arenaAddress: arena,
-    signerPrivateKey: readKey(env, "SIGNER_PRIVATE_KEY"),
-    relayerPrivateKey: readKey(env, "RELAYER_PRIVATE_KEY"),
+    evm: {
+      rpcUrl:
+        env.RH_RPC_URL && env.RH_RPC_URL !== ""
+          ? env.RH_RPC_URL
+          : PUBLIC_RPC_URL,
+      wssUrl: env.RH_WSS_URL && env.RH_WSS_URL !== "" ? env.RH_WSS_URL : null,
+      arenaAddress: arena,
+      signerPrivateKey: readKey(env, "SIGNER_PRIVATE_KEY"),
+      relayerPrivateKey: readKey(env, "RELAYER_PRIVATE_KEY"),
+      tokenAddress: token === "" ? null : (token as Address),
+    },
     stakeAmount,
-    tokenAddress: token === "" ? null : (token as Address),
-    relayerMinBalanceWei,
+    relayerMinBalance,
     corsOrigins: parseOrigins(env.CORS_ORIGINS),
     limits: {
       faucetPerIpPerHour: readInt(env, "FAUCET_PER_IP_PER_HOUR", 5, 1, 100000),

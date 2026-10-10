@@ -1,15 +1,15 @@
 import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Hex } from "viem";
-import { type ChainGateway, MatchStatus } from "./ChainGateway";
+import type { Hex32 } from "@bump/shared";
+import { type ArenaChain, MatchStatus } from "./ArenaChain";
 
 interface TrackedFile {
-  matchId: Hex;
+  matchId: Hex32;
   settleDeadline: string;
 }
 
 export interface RefundKeeperOptions {
-  chain: ChainGateway;
+  chain: ArenaChain;
   dir: string;
   now: () => number;
   log: (line: Record<string, unknown>) => void;
@@ -18,7 +18,7 @@ export interface RefundKeeperOptions {
 }
 
 export class RefundKeeper {
-  private readonly tracked = new Map<Hex, bigint>();
+  private readonly tracked = new Map<Hex32, bigint>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -53,7 +53,7 @@ export class RefundKeeper {
     return this.tracked.size;
   }
 
-  async track(matchId: Hex, settleDeadline: bigint): Promise<void> {
+  async track(matchId: Hex32, settleDeadline: bigint): Promise<void> {
     this.tracked.set(matchId, settleDeadline);
     try {
       await mkdir(this.options.dir, { recursive: true });
@@ -67,7 +67,7 @@ export class RefundKeeper {
     }
   }
 
-  async forget(matchId: Hex): Promise<void> {
+  async forget(matchId: Hex32): Promise<void> {
     this.tracked.delete(matchId);
     try {
       await unlink(this.path(matchId));
@@ -101,7 +101,7 @@ export class RefundKeeper {
     }
   }
 
-  private async process(matchId: Hex): Promise<void> {
+  private async process(matchId: Hex32): Promise<void> {
     const { chain, now, log } = this.options;
     try {
       const view = await chain.getMatch(matchId);
@@ -153,7 +153,7 @@ export class RefundKeeper {
     }
   }
 
-  private path(matchId: Hex): string {
+  private path(matchId: Hex32): string {
     return join(this.options.dir, `${matchId}.json`);
   }
 }
