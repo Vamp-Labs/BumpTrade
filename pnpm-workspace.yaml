@@ -1,0 +1,12 @@
+packages:
+  - "packages/*"
+  - "server"
+  - "indexer"
+  - "contracts"
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false
+blockExoticSubdeps: false
+minimumReleaseAgeExclude:
+  - ox@0.14.54
+  - viem@2.57.4

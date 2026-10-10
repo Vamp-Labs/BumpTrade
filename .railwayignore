@@ -1,0 +1,7 @@
+docs/
+contracts/lib/
+contracts/broadcast/
+scripts/
+*.png
+*.jpg
+*.blend
