@@ -1,0 +1,86 @@
+{
+  "domain": {
+    "name": "BumpArena",
+    "version": "1",
+    "chainId": 46630,
+    "verifyingContract": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  },
+  "types": {
+    "Result": [
+      {
+        "name": "matchId",
+        "type": "bytes32"
+      },
+      {
+        "name": "players",
+        "type": "address[]"
+      },
+      {
+        "name": "finalBalances",
+        "type": "uint32[]"
+      },
+      {
+        "name": "ranks",
+        "type": "uint8[]"
+      },
+      {
+        "name": "inputLogHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "replayHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "endedAt",
+        "type": "uint64"
+      }
+    ]
+  },
+  "primaryType": "Result",
+  "message": {
+    "matchId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "players": [
+      "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    ],
+    "finalBalances": [
+      30,
+      205,
+      65
+    ],
+    "ranks": [
+      3,
+      1,
+      2
+    ],
+    "inputLogHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "replayHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+    "endedAt": 1790000000
+  },
+  "result": {
+    "matchId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "players": [
+      "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    ],
+    "finalBalances": [
+      30,
+      205,
+      65
+    ],
+    "ranks": [
+      3,
+      1,
+      2
+    ],
+    "inputLogHash": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "replayHash": "0x3333333333333333333333333333333333333333333333333333333333333333",
+    "endedAt": 1790000000
+  },
+  "digest": "0x394328af2010d8984ae81baaa00ac0a2a59c47ad7e609383b2e107bdc660bf10",
+  "signerAddress": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "signature": "0x265614fb7ed50b1766502c2c9ef9fb3ffbff041e326de89a9a58b698b1b0e0d8515689a4dc49afa6e234d47222216a6a297aed735db882395b7ccbadf383accd1c"
+}

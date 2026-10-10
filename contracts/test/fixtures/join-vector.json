@@ -1,0 +1,43 @@
+{
+  "domain": {
+    "name": "BumpArena",
+    "version": "1",
+    "chainId": 46630,
+    "verifyingContract": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+  },
+  "types": {
+    "JoinIntent": [
+      {
+        "name": "matchId",
+        "type": "bytes32"
+      },
+      {
+        "name": "player",
+        "type": "address"
+      },
+      {
+        "name": "sessionKey",
+        "type": "address"
+      },
+      {
+        "name": "vehicleId",
+        "type": "uint8"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      }
+    ]
+  },
+  "primaryType": "JoinIntent",
+  "message": {
+    "matchId": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "player": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "sessionKey": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "vehicleId": 3,
+    "deadline": "1790003600"
+  },
+  "digest": "0x7192129834071e4a0871f89af6f8c8b97b3ebf32b46b9d585bf6676002976185",
+  "signerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "signature": "0xf5eb65582442ad1ced9125af034d25b1a4d10578c68e1729f9111c4fc60e1d644aefba779dcf3c907e4f69e31bca102ecf96d9ce70434067ef5787e0b054e5cb1b"
+}

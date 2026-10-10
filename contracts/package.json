@@ -1,0 +1,16 @@
+{
+  "name": "@bump/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./abi/index.ts" },
+  "scripts": {
+    "build": "forge build && node script/export-abi.mjs",
+    "test": "forge test",
+    "typecheck": "tsc --noEmit -p .",
+    "check-vector": "node script/check-vector.mjs"
+  },
+  "devDependencies": {
+    "viem": "2.57.4"
+  }
+}
