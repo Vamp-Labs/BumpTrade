@@ -1,0 +1,21 @@
+[toolchain]
+package_manager = "pnpm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+bump_arena = "3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz"
+
+[programs.devnet]
+bump_arena = "3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz"
+
+[provider]
+cluster = "localnet"
+wallet = "target/deploy/local-wallet.json"
+
+[scripts]
+test = "cargo test -p bump_arena"
+
+[hooks]
