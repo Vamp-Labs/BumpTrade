@@ -355,8 +355,13 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
   private async handleSolPrepare(client: Client, raw: unknown): Promise<void> {
     const relay = this.ctx.solJoin;
     if (!relay) return;
+    const startedAt = this.ctx.now();
+    this.ctx.log({ evt: "sol_prepare_received", matchId: this.matchId });
     if (!(await this.opened)) return;
-    if (!this.joinsOpen(client)) return;
+    if (!this.joinsOpen(client)) {
+      this.ctx.log({ evt: "sol_prepare_closed", matchId: this.matchId, phase: this.state.phase });
+      return;
+    }
     const auth = client.auth as { ip?: string } | undefined;
     this.joinsInFlight += 1;
     try {
@@ -365,6 +370,13 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
         this.matchId,
         auth?.ip ?? "unknown",
       );
+      this.ctx.log({
+        evt: "sol_prepare_done",
+        matchId: this.matchId,
+        ok: outcome.ok,
+        code: outcome.ok ? undefined : outcome.code,
+        ms: this.ctx.now() - startedAt,
+      });
       if (outcome.ok) this.sendEvent(client, outcome.event);
       else this.sendJoinOutcome(client, outcome);
     } catch (error) {

@@ -121,6 +121,7 @@ async function main() {
 
   // ============ (a) open, chain selector, connect
   const A = await mk(0), B = await mk(1);
+  globalThis.__pages = { A, B };
   await Promise.all([openWalletPanel(A), openWalletPanel(B)]);
   let t = await panel(A);
   check("a.default-chain-solana", /Solana Devnet/.test(t) && (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)) === "Solana Devnet", (await A.eval(`document.querySelector('.on-chains .active')?.textContent`)));
@@ -417,4 +418,4 @@ function finish(keys, sg, br) {
   process.exitCode = failed.length ? 1 : 0;
 }
 
-main().catch((e) => { console.error("E2E crashed:", e); report.crash = String(e.stack ?? e); try { writeFileSync(`${CFG.out}/report.json`, JSON.stringify(report, null, 2)); } catch {} process.exit(2); });
+main().catch((e) => { console.error("E2E crashed:", e); for (const [n, p] of Object.entries(globalThis.__pages ?? {})) console.error(`--- console ${n} (last 25)\n` + (p.console ?? []).slice(-25).join("\n")); report.crash = String(e.stack ?? e); try { writeFileSync(`${CFG.out}/report.json`, JSON.stringify(report, null, 2)); } catch {} process.exit(2); });
