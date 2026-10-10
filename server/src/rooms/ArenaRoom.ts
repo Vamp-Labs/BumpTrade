@@ -115,6 +115,7 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
   private matchId: Hex32 = ZERO_HASH;
   private seed: Hex = ZERO_HASH;
   private busy = false;
+  private opened: Promise<boolean> = Promise.resolve(true);
   private joinsInFlight = 0;
   private cancelled = false;
   private readonly bindings = new Map<string, string>();
@@ -155,24 +156,40 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
     this.state.joinDeadline = Number(joinDeadline);
     this.state.fillEndsAt = 0;
 
-    await chain.openMatch({
-      matchId: this.matchId,
-      stake: config.stakeAmount,
-      maxPlayers: config.maxPlayers,
-      startBalance: config.startBalance,
-      joinDeadline,
-    });
-    this.lastSettlement = {
-      t: "settlement",
-      matchId: this.matchId,
-      status: "opened",
-    };
-    try {
-      const view = await chain.getMatch(this.matchId);
-      await this.ctx.keeper.track(this.matchId, view.settleDeadline);
-    } catch (error) {
-      this.ctx.log({ evt: "keeper_track_failed", error: String(error) });
-    }
+    const matchId = this.matchId;
+    this.opened = (async () => {
+      try {
+        await chain.openMatch({
+          matchId,
+          stake: config.stakeAmount,
+          maxPlayers: config.maxPlayers,
+          startBalance: config.startBalance,
+          joinDeadline,
+        });
+      } catch (error) {
+        this.ctx.log({ evt: "open_match_failed", matchId, error: String(error) });
+        this.cancelled = true;
+        this.broadcastEvent({
+          t: "error",
+          code: "CHAIN_UNAVAILABLE",
+          message: "could not open the match on chain",
+        });
+        void this.disconnect();
+        return false;
+      }
+      this.lastSettlement = {
+        t: "settlement",
+        matchId,
+        status: "opened",
+      };
+      try {
+        const view = await chain.getMatch(matchId);
+        await this.ctx.keeper.track(matchId, view.settleDeadline);
+      } catch (error) {
+        this.ctx.log({ evt: "keeper_track_failed", error: String(error) });
+      }
+      return true;
+    })();
     this.ctx.stats.rooms += 1;
     this.metrics = new RoomMetrics(this.roomId, () => this.state.phase);
     this.ctx.metrics.register(this.metrics);
@@ -317,7 +334,9 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
 
   private async handleJoin(client: Client, raw: unknown): Promise<void> {
     const relay = this.ctx.joinRelay;
-    if (!relay || !this.joinsOpen(client)) return;
+    if (!relay) return;
+    if (!(await this.opened)) return;
+    if (!this.joinsOpen(client)) return;
     const auth = client.auth as { ip?: string } | undefined;
     this.joinsInFlight += 1;
     try {
@@ -335,7 +354,9 @@ export class ArenaRoom extends Room<{ state: MatchState; input: InputFrame }> {
 
   private async handleSolPrepare(client: Client, raw: unknown): Promise<void> {
     const relay = this.ctx.solJoin;
-    if (!relay || !this.joinsOpen(client)) return;
+    if (!relay) return;
+    if (!(await this.opened)) return;
+    if (!this.joinsOpen(client)) return;
     const auth = client.auth as { ip?: string } | undefined;
     this.joinsInFlight += 1;
     try {
