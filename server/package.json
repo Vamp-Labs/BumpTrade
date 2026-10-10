@@ -12,13 +12,18 @@
   "dependencies": {
     "@bump/contracts": "workspace:*",
     "@bump/shared": "workspace:*",
+    "@bump/sol-client": "workspace:*",
     "@colyseus/schema": "5.0.36",
     "@colyseus/ws-transport": "0.18.4",
     "@dimforge/rapier3d-compat": "0.21.0",
+    "@electric-sql/pglite": "0.2.13",
+    "@solana/kit": "8.4.0",
     "colyseus": "0.18.9",
+    "pg": "8.23.1",
     "viem": "2.57.4"
   },
   "devDependencies": {
+    "@types/pg": "8.23.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
