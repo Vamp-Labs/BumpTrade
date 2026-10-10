@@ -1,0 +1,21 @@
+{
+  "name": "@bump/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ponder dev",
+    "start": "ponder start",
+    "codegen": "ponder codegen",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@bump/contracts": "workspace:*",
+    "hono": "4.13.13",
+    "ponder": "0.18.0",
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
