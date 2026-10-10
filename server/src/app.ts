@@ -43,7 +43,7 @@ export const createApp = (context: RoomContext) => {
     ? new RpcProxy({
         url: context.config.solana.rpcUrl,
         now: context.now,
-        perMinute: 600,
+        perMinute: 1800,
       })
     : null;
   const board = context.leaderboard;

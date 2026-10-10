@@ -185,11 +185,15 @@ export class SolanaWallet implements ChainWallet {
   public async refreshBalance(): Promise<void> {
     const address = this.state.address;
     if (!address) return;
-    try {
-      const bumpBalance = await readTokenBalance(address);
-      if (this.state.address === address) this.patch({ bumpBalance });
-    } catch {
-      this.patch({ bumpBalance: null });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const bumpBalance = await readTokenBalance(address);
+        if (this.state.address === address) this.patch({ bumpBalance });
+        return;
+      } catch {
+        if (this.state.address !== address) return;
+        await new Promise((resolve) => window.setTimeout(resolve, 700 * (attempt + 1)));
+      }
     }
   }
 

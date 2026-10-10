@@ -6,7 +6,7 @@ export function claimFaucet(address: string | null, wallet: { refreshBalance(): 
   if (!address) return;
   void faucet.claim(address).then((ok) => {
     void wallet.refreshBalance();
-    if (ok) window.setTimeout(() => void wallet.refreshBalance(), 2500);
+    if (ok) for (const delay of [2500, 6000, 12000]) window.setTimeout(() => void wallet.refreshBalance(), delay);
   });
 }
 
