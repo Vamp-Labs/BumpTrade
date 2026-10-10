@@ -1,0 +1,1739 @@
+/* ==========================================================================
+   BUMP.TRADE — Modern Arcade Combat Gameplay HUD
+   Visual Philosophy: "OBJECT LOUD — UI QUIET"
+   Design System: Lucky Games (#1ef66d Lucky Green, #111b2d Sheet,
+                  #1a263b Panel, #0e1726 Well, #243149 Line,
+                  #2dbdf1 Cyan, #f80757 Hot Red, #fcbe20 Gold)
+   ========================================================================== */
+
+#gameplay-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 1;
+  transition: opacity 0.25s ease-out;
+}
+
+#gameplay-hud.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Screen Damage Vignette (Subtle edge flash on impact)
+   -------------------------------------------------------------------------- */
+.hud-damage-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 60px 10px rgba(255, 59, 95, 0);
+  transition: box-shadow 0.08s ease-out;
+  z-index: 5;
+}
+
+.hud-damage-vignette.active {
+  box-shadow: inset 0 0 80px 20px rgba(255, 59, 95, 0.45);
+}
+
+/* --------------------------------------------------------------------------
+   Top-Left: Bag / Stock Card
+   -------------------------------------------------------------------------- */
+.hud-bag-card {
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  width: clamp(210px, 18vw, 250px);
+  background: rgba(10, 16, 28, 0.62);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  pointer-events: auto;
+  user-select: none;
+  transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.hud-bag-card:hover {
+  border-color: rgba(30, 246, 109, 0.5);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.hud-bag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.hud-bag-title {
+  font-family: 'Orbitron', 'JetBrains Mono', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #8b9bb4;
+  text-transform: uppercase;
+}
+
+.hud-bag-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hud-bag-amount {
+  font-family: 'Orbitron', monospace;
+  font-size: 32px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+  transform-origin: center center;
+}
+
+.hud-bag-delta {
+  font-size: 13px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+  transform-origin: center center;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.hud-bag-delta.positive {
+  background: #123326;
+  color: #1ef66d;
+  border: 1px solid #1ef66d;
+}
+
+.hud-bag-delta.negative {
+  background: rgba(248, 7, 87, 0.15);
+  color: #f80757;
+  border: 1px solid #f80757;
+}
+
+.hud-bag-delta.faded {
+  opacity: 0.35;
+  transform: scale(0.95);
+}
+
+.hud-stock-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  padding-top: 6px;
+  border-top: 1px solid #243149;
+}
+
+.hud-stock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1ef66d;
+}
+
+.hud-stock-ticker {
+  color: #e2e8f0;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.hud-stock-change {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.hud-stock-change.positive {
+  color: #1ef66d;
+}
+
+.hud-stock-change.negative {
+  color: #f80757;
+}
+
+/* --------------------------------------------------------------------------
+   Top-Center: Premium Floating Digital Countdown Pill (Not a Card)
+   -------------------------------------------------------------------------- */
+.hud-round-timer {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 20px;
+  height: 38px;
+  background: rgba(10, 16, 28, 0.60);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 9999px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  pointer-events: auto;
+  user-select: none;
+  z-index: 20;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.hud-timer-badge {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #2dbdf1;
+  text-transform: uppercase;
+}
+
+.hud-timer-dot {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  user-select: none;
+}
+
+.hud-timer-digits {
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 1.8px;
+  line-height: 1;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-round-timer.hud-timer-urgent {
+  background: rgba(26, 10, 16, 0.72);
+  border-color: rgba(248, 7, 87, 0.75);
+  box-shadow: 0 0 25px rgba(248, 7, 87, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: hudTimerUrgentPulse 0.9s infinite alternate ease-in-out;
+}
+
+.hud-round-timer.hud-timer-urgent .hud-timer-badge,
+.hud-round-timer.hud-timer-urgent .hud-timer-dot,
+.hud-round-timer.hud-timer-urgent .hud-timer-digits {
+  color: #f80757;
+  text-shadow: 0 0 14px rgba(248, 7, 87, 0.6);
+}
+
+@keyframes hudTimerUrgentPulse {
+  0% {
+    scale: 1;
+    box-shadow: 0 0 18px rgba(248, 7, 87, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  100% {
+    scale: 1.04;
+    box-shadow: 0 0 32px rgba(248, 7, 87, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Top-Center Area: Ephemeral Event Notifications
+   -------------------------------------------------------------------------- */
+.hud-notification-container {
+  position: absolute;
+  top: 66px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 15;
+  width: 90%;
+  max-width: 440px;
+}
+
+.hud-notification-card {
+  background: rgba(10, 16, 28, 0.68);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  padding: 8px 20px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transform-origin: center top;
+  opacity: 0;
+}
+
+.hud-notification-card.visible {
+  opacity: 1;
+}
+
+.hud-notification-card.type-bump {
+  border-color: #2dbdf1;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+}
+
+.hud-notification-card.type-pickup {
+  border-color: #1ef66d;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+}
+
+.hud-notification-card.type-liquidation {
+  border-color: #f80757;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+}
+
+.hud-notification-main {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.hud-notification-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 3px;
+  letter-spacing: 0.8px;
+}
+
+.hud-notification-card.type-bump .hud-notification-sub {
+  color: #2dbdf1;
+}
+
+.hud-notification-card.type-pickup .hud-notification-sub {
+  color: #1ef66d;
+}
+
+.hud-notification-card.type-liquidation .hud-notification-sub {
+  color: #f80757;
+}
+
+/* --------------------------------------------------------------------------
+   Arcade Popups: BUMP! Impact scale-punch banner
+   -------------------------------------------------------------------------- */
+.hud-bump-popup {
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  translate: -50% -50%;
+  transform-origin: center center;
+  pointer-events: none;
+  z-index: 22;
+  opacity: 0;
+  text-align: center;
+}
+
+.hud-bump-popup.show {
+  opacity: 1;
+}
+
+.hud-bump-text {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #fcbe20;
+  font-style: italic;
+  -webkit-text-stroke: 1.5px #041a0c;
+}
+
+.hud-bump-cash {
+  font-family: 'Orbitron', monospace;
+  font-size: 26px;
+  font-weight: 900;
+  margin-top: 4px;
+  letter-spacing: 1.5px;
+}
+
+.hud-bump-cash.positive {
+  color: #1ef66d;
+}
+
+.hud-bump-cash.negative {
+  color: #f80757;
+}
+
+.hud-bump-cash.neutral {
+  color: #2dbdf1;
+}
+
+/* Signature Skill Crash Variants (PRD Sections 7-15, 24) */
+.hud-bump-popup.skill-perfect-bump .hud-bump-text {
+  color: #00f5a0;
+  text-shadow: 0 0 20px #00f5a0, 0 0 40px #00f5a0;
+  -webkit-text-stroke: 1.5px #022010;
+}
+
+.hud-bump-popup.skill-counter-crash .hud-bump-text {
+  color: #ff2a55;
+  text-shadow: 0 0 25px #ff2a55, 0 0 45px #ff8800;
+  -webkit-text-stroke: 1.5px #200208;
+  animation: counterPunchGlow 0.3s infinite alternate ease-in-out;
+}
+
+.hud-bump-popup.skill-bank-shot .hud-bump-text {
+  color: #c040ff;
+  text-shadow: 0 0 20px #c040ff, 0 0 35px #00f5a0;
+  -webkit-text-stroke: 1.5px #180025;
+}
+
+.hud-bump-popup.skill-wall-slam .hud-bump-text {
+  color: #ff8800;
+  text-shadow: 0 0 20px #ff8800, 0 0 40px #ff0044;
+  -webkit-text-stroke: 1.5px #220800;
+}
+
+.hud-bump-popup.skill-boost-crash .hud-bump-text {
+  color: #ffaa00;
+  text-shadow: 0 0 24px #ffaa00, 0 0 45px #ff2200;
+  -webkit-text-stroke: 1.5px #251000;
+}
+
+.hud-bump-popup.skill-drift-bump .hud-bump-text {
+  color: #00e5ff;
+  text-shadow: 0 0 20px #00e5ff, 0 0 35px #0066ff;
+  -webkit-text-stroke: 1.5px #001825;
+}
+
+.hud-bump-popup.skill-revenge .hud-bump-text {
+  color: #ff0066;
+  text-shadow: 0 0 24px #ff0066, 0 0 40px #ffd700;
+  -webkit-text-stroke: 1.5px #200010;
+}
+
+.hud-bump-popup.skill-double-impact .hud-bump-text {
+  color: #ffbb00;
+  text-shadow: 0 0 24px #ffbb00, 0 0 45px #ff4400;
+  -webkit-text-stroke: 1.5px #251200;
+}
+
+.hud-bump-popup.skill-close-call .hud-bump-text {
+  color: #2dbdf1;
+  font-size: 32px;
+  text-shadow: 0 0 16px #2dbdf1;
+  -webkit-text-stroke: 1px #041424;
+}
+
+.hud-bump-popup.skill-pinned .hud-bump-text {
+  color: #ff4400;
+  font-size: 34px;
+  text-shadow: 0 0 18px #ff4400;
+  -webkit-text-stroke: 1.5px #200800;
+}
+
+.hud-bump-popup.skill-final-duel .hud-bump-text {
+  color: #ff0055;
+  font-size: 42px;
+  text-shadow: 0 0 30px #ff0055, 0 0 60px #ffd700;
+  -webkit-text-stroke: 2px #000000;
+  animation: counterPunchGlow 0.4s infinite alternate ease-in-out;
+}
+
+@keyframes counterPunchGlow {
+  0% { transform: scale(1); filter: brightness(1); }
+  100% { transform: scale(1.08); filter: brightness(1.3); }
+}
+
+/* --------------------------------------------------------------------------
+   Top-Right: Player Ranking Card
+   -------------------------------------------------------------------------- */
+.hud-ranking-card {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: clamp(210px, 18vw, 250px);
+  background: rgba(10, 16, 28, 0.62);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  pointer-events: auto;
+  user-select: none;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+.hud-ranking-card:hover {
+  border-color: rgba(30, 246, 109, 0.4);
+}
+
+.hud-ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-rank-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fcbe20;
+  letter-spacing: 1px;
+}
+
+.hud-trophy-icon {
+  font-size: 14px;
+}
+
+.hud-ranking-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #8b9bb4;
+  text-transform: uppercase;
+}
+
+.hud-ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-ranking-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #bcd1ef;
+  background: rgba(14, 23, 38, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.2s ease;
+}
+
+.hud-ranking-row.player-row {
+  background: rgba(18, 51, 38, 0.70);
+  border-color: #1ef66d;
+  color: #1ef66d;
+  font-weight: 800;
+}
+
+.hud-rank-pos-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 900;
+  background: #1a263b;
+  color: #8b9bb4;
+}
+
+.hud-rank-pos-badge.rank-1 {
+  background: #fcbe20;
+  color: #041a0c;
+  border: 1px solid #fcbe20;
+}
+
+.hud-rank-pos-badge.rank-2 {
+  background: #243149;
+  color: #bcd1ef;
+  border: 1px solid #243149;
+}
+
+.hud-rank-pos-badge.rank-3 {
+  background: #243149;
+  color: #f08204;
+  border: 1px solid #243149;
+}
+
+.hud-ranking-row.player-row .hud-rank-pos-badge {
+  background: #1ef66d;
+  color: #041a0c;
+  border: 1px solid #1ef66d;
+}
+
+.hud-rank-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+.hud-rank-cash {
+  font-family: 'Orbitron', monospace;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  text-align: right;
+}
+
+.hud-ranking-row.player-row .hud-rank-cash {
+  color: #1ef66d;
+}
+
+.hud-ranking-expand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 4px;
+  margin-top: 4px;
+  color: #8b9bb4;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.hud-ranking-expand:hover {
+  color: #2dbdf1;
+}
+
+/* --------------------------------------------------------------------------
+   Bottom-Center: Player Status Dual Bar (HP & Boost)
+   -------------------------------------------------------------------------- */
+.hud-status-bar {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: clamp(380px, 38vw, 540px);
+  background: rgba(10, 16, 28, 0.62);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 9999px;
+  padding: 8px 22px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.60), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  pointer-events: auto;
+  user-select: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hud-status-bar.damage-flash {
+  border-color: #f80757;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+}
+
+.hud-status-segment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.hud-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud-hp-icon {
+  color: #1ef66d;
+}
+
+.hud-boost-icon {
+  color: #2dbdf1;
+}
+
+.hud-status-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 1px;
+  min-width: 24px;
+}
+
+.hud-bar-track {
+  flex: 1;
+  height: 8px;
+  background: #0e1726;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.hud-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.12s ease-out;
+}
+
+.hud-hp-fill {
+  background: #1ef66d;
+}
+
+.hud-hp-fill.warning {
+  background: #f08204;
+}
+
+.hud-hp-fill.critical {
+  background: #f80757;
+}
+
+.hud-boost-fill {
+  background: #2dbdf1;
+}
+
+.hud-boost-segment.boost-full .hud-boost-fill {
+  background: #2dbdf1;
+}
+
+.hud-status-pct {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  min-width: 38px;
+  text-align: right;
+  letter-spacing: 0.5px;
+}
+
+.hud-status-divider {
+  width: 1px;
+  height: 20px;
+  background: #243149;
+}
+
+/* --------------------------------------------------------------------------
+   In-World Floating Nameplates / Target Labels
+   -------------------------------------------------------------------------- */
+.hud-world-labels-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 8;
+}
+
+.hud-world-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.15s ease-out;
+  will-change: transform;
+}
+
+.hud-world-label-bubble {
+  background: #111b2d;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #243149;
+  border-radius: 6px;
+  padding: 3px 8px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.hud-world-label-name {
+  font-size: 10px;
+  font-weight: 800;
+  color: #bcd1ef;
+  letter-spacing: 0.4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.hud-world-label-cash {
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+
+.hud-world-label-arrow {
+  font-size: 9px;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+/* Player Floating Label (Emerald Accent) */
+.hud-world-label.player .hud-world-label-bubble {
+  border-color: #1ef66d;
+  background: #123326;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.hud-world-label.player .hud-world-label-name {
+  color: #1ef66d;
+}
+
+.hud-world-label.player .hud-world-label-cash {
+  color: #ffffff;
+}
+
+.hud-world-label.player .hud-world-label-arrow {
+  color: #1ef66d;
+}
+
+/* Opponent Archetype Theme Accents */
+.hud-world-label.theme-bear .hud-world-label-bubble {
+  border-color: #f80757;
+}
+.hud-world-label.theme-bear .hud-world-label-name,
+.hud-world-label.theme-bear .hud-world-label-cash,
+.hud-world-label.theme-bear .hud-world-label-arrow {
+  color: #f80757;
+}
+
+.hud-world-label.theme-tsla .hud-world-label-bubble {
+  border-color: #2dbdf1;
+}
+.hud-world-label.theme-tsla .hud-world-label-name,
+.hud-world-label.theme-tsla .hud-world-label-cash,
+.hud-world-label.theme-tsla .hud-world-label-arrow {
+  color: #2dbdf1;
+}
+
+.hud-world-label.theme-nvda .hud-world-label-bubble {
+  border-color: #c084fc;
+}
+.hud-world-label.theme-nvda .hud-world-label-name,
+.hud-world-label.theme-nvda .hud-world-label-cash,
+.hud-world-label.theme-nvda .hud-world-label-arrow {
+  color: #c084fc;
+}
+
+.hud-world-label.theme-whale .hud-world-label-bubble {
+  border-color: #fcbe20;
+}
+.hud-world-label.theme-whale .hud-world-label-name,
+.hud-world-label.theme-whale .hud-world-label-cash,
+.hud-world-label.theme-whale .hud-world-label-arrow {
+  color: #fcbe20;
+}
+
+/* --------------------------------------------------------------------------
+   Controls Guide (Compact Collapsible Toggle)
+   -------------------------------------------------------------------------- */
+.controls-guide-compact {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 10;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.controls-toggle-btn {
+  background: #1a263b;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #243149;
+  color: #8b9bb4;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.controls-toggle-btn:hover {
+  background: #232d44;
+  color: #ffffff;
+  border-color: #1ef66d;
+}
+
+.controls-toggle-btn .key-hint {
+  background: #0e1726;
+  border: 1px solid #243149;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 800;
+  color: #2dbdf1;
+}
+
+.controls-guide-panel {
+  position: absolute;
+  bottom: 34px;
+  left: 0;
+  background: #111b2d;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #243149;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #bcd1ef;
+  line-height: 1.6;
+  width: 290px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.controls-guide-panel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Layout Rules
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .hud-bag-card {
+    top: 12px;
+    left: 12px;
+    width: 190px;
+    padding: 10px 12px;
+  }
+  .hud-bag-amount {
+    font-size: 26px;
+  }
+  .hud-ranking-card {
+    top: 12px;
+    right: 12px;
+    width: 190px;
+    padding: 8px 10px;
+  }
+  .hud-status-bar {
+    width: 88vw;
+    bottom: 16px;
+    padding: 8px 14px;
+    gap: 10px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Active Power-Ups Badges Row (Below Vehicle Status Bar)
+   -------------------------------------------------------------------------- */
+.hud-powerups-bar {
+  position: absolute;
+  bottom: 84px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.hud-powerup-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(10, 16, 28, 0.65);
+  backdrop-filter: blur(16px) saturate(190%);
+  -webkit-backdrop-filter: blur(16px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #ffffff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: badgeSlideIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes badgeSlideIn {
+  from { transform: translateY(12px) scale(0.85); opacity: 0; }
+  to { transform: translateY(0) scale(1.0); opacity: 1; }
+}
+
+.hud-powerup-badge.badge-TURBO {
+  border-color: #2dbdf1;
+  color: #2dbdf1;
+}
+
+.hud-powerup-badge.badge-HEAVY_HIT {
+  border-color: #fcbe20;
+  color: #fcbe20;
+}
+
+.hud-powerup-badge.badge-CASH_MAGNET {
+  border-color: #c084fc;
+  color: #c084fc;
+}
+
+.hud-powerup-badge.badge-SHIELD {
+  border-color: #1ef66d;
+  color: #1ef66d;
+}
+
+.hud-powerup-badge .badge-timer {
+  background: #1a263b;
+  border: 1px solid #243149;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Final 10s Countdown Tick Punch
+   -------------------------------------------------------------------------- */
+.hud-countdown-tick {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.6);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 110px;
+  font-weight: 900;
+  color: #f80757;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 25;
+  transition: opacity 0.08s ease;
+}
+
+.hud-countdown-tick.pulse {
+  animation: tickPunch 0.75s cubic-bezier(0.12, 0.8, 0.32, 1) forwards;
+}
+
+@keyframes tickPunch {
+  0% { transform: translate(-50%, -50%) scale(1.4); opacity: 1; }
+  35% { transform: translate(-50%, -50%) scale(1.0); opacity: 0.95; }
+  100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   Round Complete Banner
+   -------------------------------------------------------------------------- */
+.hud-round-complete-banner {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #111b2d;
+  border-top: 2px solid #1ef66d;
+  border-bottom: 2px solid #1ef66d;
+  border-left: 1px solid #243149;
+  border-right: 1px solid #243149;
+  padding: 24px 70px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(16px);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 30;
+  transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.hud-round-complete-banner.show {
+  transform: translate(-50%, -50%) scale(1.0);
+  opacity: 1;
+}
+
+.hud-complete-glitch {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: 5px;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.hud-complete-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #2dbdf1;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   In-World Floating Numbers (+-$)
+   -------------------------------------------------------------------------- */
+.hud-world-float {
+  position: absolute;
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  pointer-events: none;
+  z-index: 12;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  transition: transform 0.05s linear;
+  user-select: none;
+}
+
+.hud-world-float.gain {
+  color: #1ef66d;
+}
+
+.hud-world-float.loss {
+  color: #f80757;
+}
+
+/* --------------------------------------------------------------------------
+   Match Result Podium Modal (Panel 11 Style)
+   -------------------------------------------------------------------------- */
+.hud-result-modal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 40;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.hud-result-modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+  display: none;
+}
+
+.hud-result-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 13, 25, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.hud-result-card {
+  position: relative;
+  width: clamp(340px, 46vw, 560px);
+  background: rgba(10, 16, 28, 0.78);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: resultCardPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes resultCardPop {
+  from { transform: scale(0.9) translateY(24px); opacity: 0; }
+  to { transform: scale(1.0) translateY(0); opacity: 1; }
+}
+
+.hud-result-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.hud-result-trophy {
+  font-size: 42px;
+  margin-bottom: 6px;
+}
+
+.hud-result-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 2.5px;
+  color: #ffffff;
+}
+
+.hud-result-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #8b9bb4;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.hud-result-podium {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hud-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #0e1726;
+  border: 1px solid #243149;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+}
+
+.hud-result-row.player-row {
+  background: #123326;
+  border: 1px solid #1ef66d;
+}
+
+.hud-result-row.first-place {
+  background: #1a263b;
+  border: 1px solid #fcbe20;
+}
+
+.hud-result-rank {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-result-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 12px;
+  background: #1a263b;
+  color: #ffffff;
+}
+
+.hud-result-badge.rank-1 {
+  background: #fcbe20;
+  color: #041a0c;
+}
+
+.hud-result-badge.rank-2 {
+  background: #243149;
+  color: #bcd1ef;
+}
+
+.hud-result-badge.rank-3 {
+  background: #243149;
+  color: #f08204;
+}
+
+.hud-result-name {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.hud-result-cash {
+  font-family: 'Orbitron', monospace;
+  font-weight: 800;
+  font-size: 16px;
+  color: #1ef66d;
+}
+
+.hud-result-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.hud-result-actions .hud-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.hud-btn-play-again {
+  background: #1ef66d;
+  color: #041a0c;
+}
+
+.hud-btn-play-again:hover {
+  background: #04f233;
+  transform: translateY(-2px);
+}
+
+.hud-btn-garage {
+  background: #1a263b;
+  border: 1px solid #243149 !important;
+  color: #ffffff;
+}
+
+.hud-btn-garage:hover {
+  background: #232d44;
+  border-color: #1ef66d !important;
+  transform: translateY(-2px);
+}
+
+/* --------------------------------------------------------------------------
+   Bump Combo Banner (Under Round Timer)
+   -------------------------------------------------------------------------- */
+.hud-combo-banner {
+  position: absolute;
+  top: 122px;
+  left: 50%;
+  translate: -50% 0;
+  transform-origin: center top;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(10, 16, 28, 0.68);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  padding: 8px 20px 6px;
+  min-width: 170px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+  z-index: 18;
+  user-select: none;
+  opacity: 0;
+}
+
+.hud-combo-banner.hidden {
+  opacity: 0;
+  display: none;
+}
+
+.hud-combo-banner.visible {
+  opacity: 1;
+  display: flex;
+}
+
+.hud-combo-banner.combo-x2 {
+  border-color: #fcbe20;
+}
+
+.hud-combo-banner.combo-x2 .hud-combo-title {
+  color: #fcbe20;
+}
+
+.hud-combo-banner.combo-x3 {
+  border-color: #2dbdf1;
+}
+
+.hud-combo-banner.combo-x3 .hud-combo-title {
+  color: #2dbdf1;
+}
+
+.hud-combo-banner.combo-lost {
+  border-color: #f80757;
+  filter: grayscale(0.5);
+}
+
+.hud-combo-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 5px;
+}
+
+.hud-combo-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.hud-combo-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: #ffffff;
+  margin-top: 2px;
+}
+
+.hud-combo-track {
+  width: 100%;
+  height: 4px;
+  background: #0e1726;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hud-combo-fill {
+  height: 100%;
+  background: #fcbe20;
+  border-radius: 2px;
+  transition: width 0.08s linear;
+}
+
+.hud-combo-banner.combo-x3 .hud-combo-fill {
+  background: #2dbdf1;
+}
+
+/* --------------------------------------------------------------------------
+   Telegraphed Market Event Banner (3... 2... 1... DOUBLE STEAL SURGE!)
+   -------------------------------------------------------------------------- */
+.hud-market-telegraph {
+  position: absolute;
+  top: 24%;
+  left: 50%;
+  translate: -50% -50%;
+  transform-origin: center center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 0;
+}
+
+.hud-market-telegraph.hidden {
+  opacity: 0;
+  display: none;
+}
+
+.hud-market-telegraph.visible {
+  opacity: 1;
+  display: flex;
+}
+
+.hud-telegraph-card {
+  background: rgba(10, 16, 28, 0.72);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid #1ef66d;
+  border-radius: 16px;
+  padding: 20px 36px;
+  text-align: center;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 280px;
+}
+
+.hud-telegraph-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.hud-telegraph-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1ef66d;
+}
+
+.hud-telegraph-badge {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #1ef66d;
+  text-transform: uppercase;
+}
+
+.hud-telegraph-countdown {
+  font-family: 'Orbitron', monospace;
+  font-size: 58px;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+  margin: 6px 0;
+}
+
+.hud-telegraph-countdown.tick {
+  animation: telegraphTick 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.4);
+}
+
+@keyframes telegraphTick {
+  0% { transform: scale(1.5); }
+  100% { transform: scale(1.0); }
+}
+
+.hud-telegraph-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #fcbe20;
+}
+
+.hud-telegraph-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b9bb4;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   World Label Bounty Badges
+   -------------------------------------------------------------------------- */
+.hud-world-bounty-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.hud-world-bounty-badge.tier-hot {
+  background: #1a263b;
+  border: 1px solid #f08204;
+  color: #f08204;
+}
+
+.hud-world-bounty-badge.tier-bigbag {
+  background: #1a263b;
+  border: 1px solid #fcbe20;
+  color: #fcbe20;
+}
+
+.hud-world-bounty-badge.tier-bounty {
+  background: #1a263b;
+  border: 1.5px solid #fcbe20;
+  color: #fcbe20;
+}
+
+.hud-world-label.has-bounty .hud-world-label-bubble {
+  border-color: #fcbe20;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+}
+
+.hud-bump-cash.combo-punch {
+  color: #fcbe20;
+  font-size: 28px;
+}
+
+/* --------------------------------------------------------------------------
+   Critical Bag State (< $25) Visual Feedback
+   -------------------------------------------------------------------------- */
+.hud-bag-card.critical-bag {
+  border-color: #f80757 !important;
+  box-shadow: 0 0 24px rgba(248, 7, 87, 0.45) !important;
+}
+
+.hud-critical-bag-tag {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #f80757;
+  background: rgba(248, 7, 87, 0.15);
+  border: 1px solid #f80757;
+  border-radius: 4px;
+  padding: 3px 6px;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.hud-world-bounty-badge.tier-critical {
+  background: rgba(248, 7, 87, 0.2);
+  border: 1px solid #f80757;
+  color: #f80757;
+}
+
+.hud-world-bounty-badge.tier-liquidated {
+  background: #0e1726;
+  border: 1px solid #243149;
+  color: #8b9bb4;
+}
+
+.hud-world-label.is-wreck .hud-world-label-bubble {
+  opacity: 0.65;
+  border-color: #243149;
+  filter: grayscale(0.8);
+}
+
+.hud-world-label.is-critical .hud-world-label-bubble {
+  border-color: #f80757;
+}
+
+.hud-ranking-row.eliminated-row {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.hud-rank-cash.eliminated {
+  color: #8b9bb4 !important;
+  font-size: 11px;
+}
+
+/* --------------------------------------------------------------------------
+   Minimalist Spectator Mode Card (PRD Section 12)
+   -------------------------------------------------------------------------- */
+.hud-spectator-card {
+  position: absolute;
+  top: 66px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  background: rgba(10, 16, 28, 0.72);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid #f80757;
+  border-radius: 14px;
+  padding: 12px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  user-select: none;
+  animation: specCardSlideDown 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes specCardSlideDown {
+  0% { transform: translate(-50%, -20px); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.hud-spectator-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #f80757;
+}
+
+.hud-spectator-skull {
+  font-size: 16px;
+}
+
+.hud-spectator-badge {
+  color: #f80757;
+  letter-spacing: 1.5px;
+}
+
+.hud-spectator-divider {
+  color: #243149;
+}
+
+.hud-spectator-finish {
+  color: #bcd1ef;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hud-spectator-watching {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+}
+
+.hud-spectator-label {
+  color: #8b9bb4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.hud-spectator-name {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.hud-spectator-cash {
+  font-family: 'Orbitron', monospace;
+  color: #1ef66d;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.hud-spectator-crown {
+  font-size: 16px;
+}
+
+.hud-spectator-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.hud-spec-nav-btn {
+  background: #1a263b;
+  border: 1px solid #243149;
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hud-spec-nav-btn:hover {
+  background: #123326;
+  border-color: #1ef66d;
+  color: #1ef66d;
+  transform: scale(1.05);
+}
+
+.hud-spec-hint {
+  font-size: 11px;
+  color: #8b9bb4;
+  letter-spacing: 0.5px;
+}
+
+.hud-bag-card.spectator-dim {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+  pointer-events: none;
+}
+
+.hud-bar-fill.hud-hp-fill.liquidated {
+  background: #243149 !important;
+  box-shadow: none !important;
+}
+

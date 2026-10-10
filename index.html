@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>BUMP.TRADE — 3D Hero Car Engine (Hood Bull)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      body, html {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #030d19;
+        color: #fff;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      canvas#webgl-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Debug Overlay */
+      #debug-overlay {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: #111b2d;
+        border: 1px solid #243149;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        padding: 14px 18px;
+        border-radius: 8px;
+        font-size: 11px;
+        color: #2dbdf1;
+        pointer-events: auto;
+        z-index: 100;
+        max-width: 300px;
+        backdrop-filter: blur(8px);
+        display: block;
+      }
+      #debug-overlay.hidden {
+        display: none;
+      }
+      .debug-title {
+        font-weight: 800;
+        font-size: 12px;
+        color: #ffffff;
+        margin-bottom: 8px;
+        border-bottom: 1px solid #243149;
+        padding-bottom: 4px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .debug-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        color: #8b9bb4;
+      }
+      .debug-val {
+        color: #f1f5f9;
+        font-weight: 700;
+      }
+      .key {
+        display: inline-block;
+        background: #1a263b;
+        border: 1px solid #243149;
+        color: #fff;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="webgl-canvas"></canvas>
+
+      <!-- Debug Overlay (F1 / ~) -->
+      <div id="debug-overlay" class="hidden">
+        <div class="debug-title">
+          <span>DEBUG METRICS</span>
+          <span id="dbg-fps" style="color: #1ef66d;">60 FPS</span>
+        </div>
+        <div class="debug-row"><span>Position:</span><span id="dbg-pos" class="debug-val">0, 0, 0</span></div>
+        <div class="debug-row"><span>Forward Vel:</span><span id="dbg-fwd-vel" class="debug-val">0.00 m/s</span></div>
+        <div class="debug-row"><span>Lateral Vel:</span><span id="dbg-lat-vel" class="debug-val">0.00 m/s</span></div>
+        <div class="debug-row"><span>Drift Ratio:</span><span id="dbg-drift" class="debug-val">0.00</span></div>
+        <div class="debug-row"><span>State:</span><span id="dbg-state" class="debug-val">IDLE</span></div>
+        <div class="debug-row"><span>Antenna Energy:</span><span id="dbg-antenna" class="debug-val">0.00</span></div>
+        <div class="debug-row"><span>Bumper Compress:</span><span id="dbg-bumper" class="debug-val">0.00m</span></div>
+        <div class="debug-row"><span>Last Collision:</span><span id="dbg-collision-tier" class="debug-val">NONE</span></div>
+        <div class="debug-row"><span>Last Force:</span><span id="dbg-collision-force" class="debug-val">0.0 N</span></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
