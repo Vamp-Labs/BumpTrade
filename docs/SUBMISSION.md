@@ -4,13 +4,15 @@ Fields marked **[FILL]** need Candra's input. Nothing below claims users, revenu
 
 ## Product name and one-line description
 
-**BUMP.TRADE**: a real-time 3D bumper-car arena where wallet-signed matches settle on Solana. Knock other cars out, last car standing wins the pot. Free to try, no SOL needed.
+**BUMP.TRADE**: HIT THEIR CAR. TAKE THEIR CASH. TRY NOT TO GET LIQUIDATED. A real-time 3D bumper-car wager arena where every hit moves balance and the pot pays out on Solana in one transaction. Free to try, no SOL needed, free test tokens only.
 
 ## Short description (for the form)
 
-BUMP.TRADE is a real-time multiplayer game built for people who have never owned crypto. A player opens the link, connects any Solana wallet, claims free BUMP tokens and joins a match with **one signature and no SOL**: the game server pays all network fees and builds the transaction, the player only signs. Each match escrows stakes in an Anchor program on Solana, the authoritative server plays the match (60 Hz physics, 30 Hz snapshots), and the result is settled on-chain with automatic payouts. If the server ever fails to settle, any player's stake is refundable after a deadline.
+HIT THEIR CAR. TAKE THEIR CASH. TRY NOT TO GET LIQUIDATED.
 
-It is also a small, working template for a hard problem in crypto gaming: fast, fair real-time play with on-chain settlement and a zero-friction first session.
+BUMP.TRADE is a real-time multiplayer wager arena built for people who have never owned crypto. A player opens a link, connects any Solana wallet, claims free BUMP tokens and joins a match with **one signature and no SOL**: the game server pays all network fees and builds the transaction, the player only signs. Every player stakes 100 BUMP and starts with a balance; every hit moves balance from the car you hit to you, and zero balance means liquidated. Each match escrows stakes in an Anchor program on Solana, the authoritative server plays the match (60 Hz physics, 30 Hz snapshots), and the result is settled on-chain with each player paid `stake x final balance / start balance`. If the server ever fails to settle, any player's stake is refundable after a deadline.
+
+It is also a small, working template for a hard problem in crypto gaming: fast, fair real-time play with on-chain settlement and a zero-friction first session. Everything runs on free devnet test tokens; there is no real money.
 
 ## Blockchains and tools integrated
 

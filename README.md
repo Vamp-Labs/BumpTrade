@@ -1,6 +1,8 @@
 # BUMP.TRADE
 
-Real-time 3D multiplayer bumper-car arena. **Solana devnet is the default chain**; Robinhood Chain testnet stays supported behind the same chain adapter. Bump other cars, knock them out of the arena, last car standing wins. Stakes are a free mock token (`BUMP`) and play is gasless: a player only signs a message, the server relayer pays the gas.
+**HIT THEIR CAR. TAKE THEIR CASH. TRY NOT TO GET LIQUIDATED.**
+
+Real-time 3D bumper-car wager arena. **Solana devnet is the default chain**; Robinhood Chain testnet stays supported behind the same chain adapter. Every player stakes 100 free `BUMP` and starts with a balance. Every hit moves balance from the car you hit to you; drop to zero and you are liquidated. At the end, each player is paid `stake x final balance / start balance` from the pot in one transaction. Play is gasless: a player only signs a message, the server relayer pays the gas.
 
 > Testnet demo. Not affiliated with, endorsed by, or connected with Robinhood Markets, Inc.
 
