@@ -24,8 +24,8 @@ It is also a small, working template for a hard problem in crypto gaming: fast, 
 - GitHub: https://github.com/Vamp-Labs/BumpTrade (private; access for hackathon@colosseum.com must be granted before submitting, or make the repository public)
 - Live demo: https://client-production-90d9.up.railway.app
 - Program on devnet: `3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz` (explorer: https://explorer.solana.com/address/3LDXSuMuzP33VZ31sar4ZN1YB13pta7NRuR6aDJmwVgz?cluster=devnet)
-- Presentation video (2-3 min): **[FILL]**
-- Product demo video (max 3 min): **[FILL]**
+- Presentation video (2-3 min): same video as the demo below (1:43, music-video format with step captions): **[FILL: public link]**
+- Product demo video (max 3 min): **[FILL: public link]** (file: `assets/bump-video/bump_trade_demo_colosseum.mp4`, outside this repo)
 
 ## Team **[FILL]**
 

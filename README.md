@@ -79,3 +79,7 @@ cd contracts && forge test
 ```
 
 Environment variable names are listed in `.env.example`; per-package details are in `server/README.md`, `indexer/README.md` and `contracts/README.md`.
+
+## License
+
+MIT, see `LICENSE`. Third-party dependencies keep their own licenses.
